@@ -5,8 +5,17 @@ N_CHANNELS = 8
 INPUT_SAMPLES = 500    # 2 sec @ 250 Hz
 N_CLASSES = 2          # 0=RELAX, 1=FOCUS  (extend as needed)
 
+# Public pretrained checkpoint (Motor Imagery, Lee 2019, 2-class)
+# Auto-downloaded from Hugging Face on first use — no manual download needed.
+HF_REPO = 'PierreGtch/EEGNetv4'
+HF_WEIGHTS = 'EEGNetv4_Lee2019_MI.ckpt'
+
 
 def build_model(n_classes: int = N_CLASSES, pretrained_path: str | None = None) -> EEGNetv4:
+    """
+    pretrained_path: local .pt file path, or None for random init.
+    For Hugging Face weights, use from_pretrained_hub() instead.
+    """
     model = EEGNetv4(
         in_chans=N_CHANNELS,
         n_classes=n_classes,
@@ -21,6 +30,22 @@ def build_model(n_classes: int = N_CLASSES, pretrained_path: str | None = None) 
                       if k in model_state and v.shape == model_state[k].shape}
         model_state.update(compatible)
         model.load_state_dict(model_state)
+    return model
+
+
+def from_pretrained_hub(n_classes: int = N_CLASSES) -> EEGNetv4:
+    """
+    Downloads EEGNetv4 pretrained on Motor Imagery (Lee 2019) from Hugging Face.
+    Requires: pip install braindecode[hub]
+    First call downloads ~10 MB and caches in ~/.cache/huggingface/
+    """
+    model = EEGNetv4.from_pretrained(
+        HF_REPO,
+        sfreq=250,
+        n_chans=N_CHANNELS,
+        n_outputs=n_classes,
+        weights_filename=HF_WEIGHTS,
+    )
     return model
 
 

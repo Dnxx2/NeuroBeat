@@ -1,4 +1,4 @@
 numpy>=1.26
 torch>=2.2
-braindecode>=0.8
+braindecode[hub]>=0.8
 scikit-learn>=1.4
