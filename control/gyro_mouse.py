@@ -105,7 +105,7 @@ class GyroMouse:
     Comparte el puerto con Unity usando SO_REUSEADDR — ambos reciben el mismo datagrama.
     """
 
-    def __init__(self, sensitivity: float = 4.0, deadzone: float = 2.0,
+    def __init__(self, sensitivity: float = 1.0, deadzone: float = 2.0,
                  smoothing: float = 0.35, rate_hz: float = 30.0,
                  threshold: float = 0.70, hysteresis: float = 0.25,
                  confirm_n: int = 3):
@@ -131,8 +131,8 @@ class GyroMouse:
         raw_y = self._apply_deadzone(gyro_pitch)  # pitch → Y del cursor
         self._vx = self.alpha * raw_x + (1 - self.alpha) * self._vx
         self._vy = self.alpha * raw_y + (1 - self.alpha) * self._vy
-        dx = int(self._vx * self.sensitivity)
-        dy = int(self._vy * self.sensitivity)
+        dx = -int(self._vx * self.sensitivity)
+        dy = -int(self._vy * self.sensitivity)
         if dx != 0 or dy != 0:
             pyautogui.moveRel(dx, dy)
         return dx, dy
