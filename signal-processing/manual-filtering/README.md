@@ -1,90 +1,76 @@
 # Manual Filtering Pipeline
 
-Pipeline clásico de DSP para limpiar, extraer features y clasificar EEG de 8 canales del Unicorn Black en tiempo real.
+Pipeline clásico de DSP para limpiar señal EEG del Unicorn Black en tiempo real.
+
+> **Para enviar a Unity junto con el modelo** usa `../stream.py` — corre ambos pipelines en paralelo y manda un solo paquete UDP con todos los valores.
+> Este README cubre el uso **standalone** del pipeline manual.
+
+**Output `push()`:** `ndarray (500, 8)` — señal limpia, z-score normalizada por canal.
+**Output `stream_to_unity()`:** JSON por UDP `{"alpha": 0.41, "beta": 0.62, "theta": 0.18, "engagement": 0.60}`
 
 ---
 
-## Cómo funciona — de la señal cruda al estado mental
+## Cómo funciona — de la señal cruda al output limpio
 
 ### El problema
 
-El Unicorn Black usa electrodos secos, lo que significa más ruido que un sistema de laboratorio cableado. La señal cruda contiene:
+El Unicorn Black usa electrodos secos, lo que introduce más ruido que un sistema de laboratorio:
 
-- **Ruido de línea eléctrica** — pico de 60 Hz (o 50 Hz en Europa) de la red eléctrica del cuarto
-- **Ruido de baja frecuencia** — drift de electrodos, movimiento lento del cuerpo
-- **Artefactos de parpadeo** — cada parpadeo genera un pulso de ~100–200 µV en los electrodos frontales que enmascara la señal cerebral
-- **Ruido compartido entre canales** — variaciones de impedancia comunes a todos los electrodos
+- **Ruido de línea eléctrica** — pico de 60 Hz de la red eléctrica del cuarto
+- **Drift de baja frecuencia** — movimiento lento de electrodos, sudor
+- **Artefactos de parpadeo** — cada parpadeo genera ~100–200 µV en FZ que enmascara la señal cerebral
+- **Ruido compartido entre canales** — interferencia electromagnética que llega igual a todos los electrodos
 
-El pipeline aplica un filtro por etapa, en orden, para eliminar cada tipo de ruido antes de extraer información útil.
+El pipeline elimina cada tipo de ruido en orden.
 
-### Etapa 1 — Common Average Reference (CAR)
+### Paso 1 — Common Average Reference (CAR)
 
 ```
-señal_ch[n] = señal_ch[n] - promedio(todos_los_canales)[n]
+canal[n] = canal[n] − promedio(todos los canales)[n]
 ```
 
-En cada instante de tiempo, se resta el promedio de los 8 canales a cada canal individualmente. Esto elimina cualquier ruido que sea idéntico en todos los electrodos al mismo tiempo (variaciones del amplificador, interferencia electromagnética ambiental). Es el paso más barato y uno de los más efectivos para EEG de electrodos secos.
+En cada instante de tiempo se resta el promedio de los 8 canales a cada canal. Elimina cualquier ruido que sea idéntico en todos los electrodos simultáneamente: variaciones del amplificador, interferencia ambiental. Es el paso más barato y uno de los más efectivos para electrodos secos.
 
-### Etapa 2 — Filtro Notch (60 Hz)
+### Paso 2 — Filtro Notch (60 Hz)
 
-Elimina el pico exacto de 60 Hz que introduce la red eléctrica. Se usa un filtro IIR notch con factor de calidad Q=30, lo que significa que solo elimina una banda estrecha de ±2 Hz alrededor de 60 Hz sin distorsionar el resto de la señal.
+Elimina el pico exacto de 60 Hz de la red eléctrica. Filtro IIR notch con Q=30: elimina solo ±2 Hz alrededor de 60 Hz sin distorsionar el resto.
 
-### Etapa 3 — Filtro Bandpass (0.5–40 Hz)
+### Paso 3 — Filtro Bandpass (0.5–40 Hz)
 
-Las bandas cerebrales de interés están todas por debajo de 40 Hz. Todo lo que está fuera de ese rango es ruido o artefacto:
-- Por debajo de 0.5 Hz: drift lento del electrodo, sudor
+Todo lo que está fuera del rango de interés cerebral se corta:
+- Por debajo de 0.5 Hz: drift de electrodos, sudor
 - Por encima de 40 Hz: ruido muscular (EMG), artefactos de alta frecuencia
 
-Se usa un filtro Butterworth de orden 4 aplicado con `filtfilt` (fase cero) para no desplazar los eventos temporalmente.
+Butterworth orden 4 con `filtfilt` (fase cero — no desplaza eventos temporalmente).
 
-### Etapa 4 — ICA con detección de parpadeos (solo offline)
+### Paso 4 — ICA con detección de parpadeos (solo offline)
 
-ICA (Independent Component Analysis) descompone los 8 canales en 8 fuentes independientes. Algunas de esas fuentes son parpadeos, movimientos musculares o ruido de electrodo. Para identificarlas automáticamente:
+ICA descompone los 8 canales en 8 fuentes independientes. MNE identifica automáticamente cuáles son parpadeos correlacionando cada componente con **FZ** (el electrodo más cercano a los ojos en el Unicorn). Los componentes de parpadeo se zerean y la señal se reconstruye.
 
-- MNE entrena la ICA sobre la grabación completa
-- `find_bads_eog()` correlaciona cada componente con el canal **FZ**, que es el electrodo más cercano a los ojos en el layout del Unicorn (frontal central). Los parpadeos generan un patrón muy característico en FZ.
-- Los componentes identificados se ponen a cero y la señal se reconstruye sin ellos
+**Por qué se omite en tiempo real:** ICA necesita ajustarse sobre un bloque largo (>10 s). En streaming muestra por muestra introduciría segundos de latencia. En tiempo real solo corre CAR + notch + bandpass, que son instantáneos.
 
-**Por qué se omite en tiempo real:** ICA necesita ajustarse sobre un bloque largo de datos (>10 s). En streaming muestra por muestra no es viable sin introducir latencia de segundos. El tiempo real usa solo CAR + notch + bandpass, que son instantáneos.
+### Paso 5 — Z-score normalización por canal (tiempo real)
 
-### Etapa 5 — Rechazo de epochs (offline)
+`RunningNormalizer` mantiene la media y varianza acumuladas de cada canal usando el algoritmo de Welford (online, sin almacenar el historial). Después de un warmup de 5 s, normaliza cada ventana para que cada canal tenga media ≈ 0 y varianza ≈ 1.
 
-Cualquier ventana de 2 segundos donde algún canal tenga una amplitud pico-a-pico mayor a 100 µV se descarta antes de extraer features. Esto elimina epochs con artefactos severos que ICA no pudo limpiar completamente (p.ej. el sujeto se movió bruscamente).
+Esto es necesario porque:
+- La amplitud absoluta del EEG varía entre sesiones, sujetos y niveles de impedancia
+- Sin normalización, un canal con mala conexión dominaría el análisis
+- Con z-score todos los canales contribuyen por igual independientemente de su escala
 
-### Etapa 6 — Extracción de features (bandpower)
+### Output final
 
-Por cada canal se calcula la potencia en 4 bandas de frecuencia usando la densidad espectral de potencia (Welch PSD):
-
-| Banda | Rango | Asociado a |
-|-------|-------|-----------|
-| Delta | 0.5–4 Hz | Sueño profundo, drift |
-| Theta | 4–8 Hz | Somnolencia, meditación |
-| **Alpha** | **8–12 Hz** | **Relajación, ojos cerrados** |
-| **Beta** | **13–30 Hz** | **Concentración activa, alerta** |
-
-El resultado es un vector de **32 features** (8 canales × 4 bandas).
-
-### Etapa 7 — Clasificador Adaptativo (nearest centroid)
-
-En vez de usar umbrales fijos (ratio α/β > 2.0 = RELAX), el `AdaptiveClassifier` aprende los centroides del sujeto específico:
-
-1. Durante la calibración, procesa grabaciones etiquetadas (RELAX y FOCUS) y calcula el vector promedio de features para cada clase.
-2. Normaliza todos los features con z-score (media 0, varianza 1) para que ninguna banda domine por escala.
-3. En tiempo real, clasifica cada ventana por distancia euclidiana al centroide más cercano.
-
-Esto es crítico porque los rangos absolutos de α/β varían enormemente entre personas. Lo que es "mucho alpha" para una persona puede ser normal para otra.
+Cada 250 ms `push()` devuelve `ndarray (500, 8)` — ventana de 2 s, 8 canales, limpia y normalizada. El equipo de juego puede usarla directamente, extraer features adicionales, o pasarla a cualquier clasificador propio.
 
 ---
 
-## Flujo completo de uso
+## Flujo completo: de cero a tiempo real
 
 ```
-[1] Instalar
-[2] Grabar calibración (offline, con Unicorn)
-[3] Calibrar el clasificador
-[4] Guardar calibración
-[5] Cargar calibración en tiempo real
-[6] Streaming al juego
+[1] pip install -r requirements.txt
+[2] Grabar calibración offline (para el clasificador adaptativo, opcional)
+[3] Calibrar el clasificador y guardar
+[4] Correr el loop de tiempo real
 ```
 
 ---
@@ -98,35 +84,31 @@ pip install -r requirements.txt
 
 ---
 
-## Paso 2 — Grabar una sesión de calibración
+## Paso 2 — Grabar calibración offline (opcional)
 
-Necesitas ~5 minutos de EEG etiquetado: unos minutos con el sujeto relajado (ojos cerrados, respiración tranquila) y unos minutos concentrado (contando mentalmente, leyendo, resolviendo algo).
+Si quieres usar el `AdaptiveClassifier` (nearest-centroid calibrado al sujeto), necesitas una grabación etiquetada de ~2 min. Si solo necesitas la señal limpia para procesarla tú mismo, salta al Paso 4 directamente.
 
 ```python
 import numpy as np
 
-# Sustituye esto con tu loop de adquisición real del Unicorn
-# Cada llamada devuelve un array (8,) con los 8 canales en voltios
-relax_samples = []
-focus_samples = []
+# Graba con el Unicorn — sustituye con tu loop de adquisición real
+relax_samples, focus_samples = [], []
 
-# Graba 2 min RELAX
-print("Cierra los ojos y respira lento — 2 minutos")
-for _ in range(250 * 120):   # 250 Hz × 120 s
-    relax_samples.append(unicorn.get_sample())
+print("RELAX — cierra los ojos, respira lento (2 min)")
+for _ in range(250 * 120):
+    relax_samples.append(unicorn.get_sample())   # ndarray (8,)
 
-# Graba 2 min FOCUS
-print("Concéntrate, cuenta de 3 en 3 — 2 minutos")
+print("FOCUS — concéntrate, cuenta de 3 en 3 (2 min)")
 for _ in range(250 * 120):
     focus_samples.append(unicorn.get_sample())
 
-relax_recording = np.array(relax_samples)   # (30000, 8)
-focus_recording = np.array(focus_samples)   # (30000, 8)
+relax_rec = np.array(relax_samples)   # (30000, 8)
+focus_rec = np.array(focus_samples)   # (30000, 8)
 ```
 
 ---
 
-## Paso 3 — Calibrar el clasificador
+## Paso 3 — Calibrar y guardar (opcional)
 
 ```python
 from pipeline import EEGPipeline
@@ -134,53 +116,108 @@ from pipeline import EEGPipeline
 pipeline = EEGPipeline(fs=250, use_ica=True)
 
 pipeline.calibrate({
-    'RELAX': relax_recording,
-    'FOCUS': focus_recording,
+    'RELAX': relax_rec,
+    'FOCUS': focus_rec,
 })
-```
 
-Internamente esto hace:
-1. Procesa cada grabación con el pipeline completo (CAR + notch + bandpass + ICA)
-2. Divide cada grabación en epochs de 2 s con 50% de solapamiento
-3. Descarta epochs ruidosos (peak-to-peak > 100 µV)
-4. Extrae el vector de 32 features de cada epoch limpio
-5. Calcula el centroide (promedio z-normalizado) para RELAX y para FOCUS
-
----
-
-## Paso 4 — Guardar la calibración
-
-```python
 pipeline.save_calibration('calibration.npz')
 ```
 
-Guarda los centroides y parámetros de normalización en un archivo `.npz`. Solo pesa unos KB. Cárgala en cualquier sesión futura sin tener que recalibrar.
+Esto procesa cada grabación con el pipeline completo, divide en epochs de 2 s, descarta los ruidosos (>100 µV), extrae el vector de 32 features (bandpower δθαβ × 8 canales) de cada epoch y calcula el centroide z-normalizado de cada clase. El archivo `.npz` pesa unos KB.
 
 ---
 
-## Paso 5 — Tiempo real (streaming al juego)
+## Paso 4 — Tiempo real
+
+### Loop básico — señal limpia para procesamiento libre
 
 ```python
 from pipeline import EEGPipeline
 from realtime import RealtimeProcessor
 
-# Cargar pipeline con la calibración del sujeto
-pipeline = EEGPipeline(fs=250, use_ica=False)   # ICA off en real-time
-pipeline.load_calibration('calibration.npz')
+pipeline = EEGPipeline(fs=250, use_ica=False)
+proc     = RealtimeProcessor(pipeline=pipeline)
 
-proc = RealtimeProcessor(pipeline=pipeline, window_sec=2.0, step_sec=0.25)
-
-# Loop de adquisición
 while True:
-    sample = unicorn.get_sample()    # ndarray (8,)
-    state = proc.push(sample)
-    if state:
-        # state es 'FOCUS', 'RELAX', o 'NEUTRAL'
-        # Enviar al juego — UDP, socket, variable compartida, lo que uses
-        send_to_game(state)
+    sample = unicorn.get_sample()       # ndarray (8,)
+    window = proc.push(sample)
+
+    if window is not None:
+        # window: ndarray (500, 8) — señal limpia, z-score por canal
+        # Los primeros ~5 s devuelve None mientras calienta el normalizador
+        pass
 ```
 
-`RealtimeProcessor` mantiene un buffer circular de 2 segundos (500 muestras). Cada 0.25 s (62 muestras nuevas) saca el buffer completo, corre el pipeline, y devuelve el estado. La latencia efectiva es ≤ 250 ms.
+### Extraer bandpower de la señal limpia
+
+```python
+from features import extract_features, BANDS
+import numpy as np
+
+if window is not None:
+    feats = extract_features(window)   # ndarray (32,)
+    # Orden: [FZ_delta, FZ_theta, FZ_alpha, FZ_beta, C3_delta, ...]
+
+    # Alpha frontal promedio (canales FZ, C3, CZ, C4 = índices 0-3)
+    alpha_frontal = np.mean([feats[ch*4 + 2] for ch in range(4)])
+    beta_frontal  = np.mean([feats[ch*4 + 3] for ch in range(4)])
+    focus_ratio   = beta_frontal / (alpha_frontal + beta_frontal + 1e-9)
+```
+
+### Enviar a Unity directamente (standalone, sin el modelo)
+
+```python
+from pipeline import EEGPipeline
+from realtime import RealtimeProcessor
+
+pipeline = EEGPipeline(fs=250, use_ica=False)
+proc     = RealtimeProcessor(pipeline=pipeline)
+
+# Envía {"alpha":0.41,"beta":0.62,"theta":0.18,"engagement":0.60} por UDP cada ~250 ms
+# Puerto 5006 para no chocar con el stream combinado (5005)
+proc.stream_to_unity(get_sample, host='127.0.0.1', port=5006)
+```
+
+---
+
+### Usar el clasificador adaptativo (si se calibró)
+
+```python
+from pipeline import EEGPipeline
+from realtime import RealtimeProcessor
+from features import extract_features
+
+pipeline = EEGPipeline(fs=250, use_ica=False)
+pipeline.load_calibration('calibration.npz')
+proc = RealtimeProcessor(pipeline=pipeline)
+
+while True:
+    sample = unicorn.get_sample()
+    window = proc.push(sample)
+
+    if window is not None:
+        feats = extract_features(window)
+        state = pipeline.classifier.predict(feats)   # 'FOCUS' | 'RELAX'
+```
+
+### Procesamiento offline (batch sobre una grabación completa)
+
+```python
+from pipeline import EEGPipeline
+import numpy as np
+
+pipeline = EEGPipeline(fs=250, use_ica=True)   # ICA activado en offline
+
+raw = np.loadtxt('session.csv', delimiter=',')[:, :8]   # (n_samples, 8)
+
+# Procesar ventana única
+clean = pipeline.process(raw[:500])   # (500, 8)
+
+# Procesar y extraer features de epochs
+epochs = raw.reshape(-1, 500, 8)
+clean_epochs, features = pipeline.process_epochs(epochs)
+# features: (n_epochs_limpios, 32)
+```
 
 ---
 
@@ -188,23 +225,24 @@ while True:
 
 ### `filters.py`
 - `common_average_reference(eeg)` — resta el promedio entre canales en cada muestra
-- `notch(signal, fs, freq, Q)` — filtro notch IIR
-- `bandpass(signal, fs, lowcut, highcut, order)` — Butterworth bandpass fase cero
+- `notch(signal, fs, freq, Q)` — filtro notch IIR, elimina pico de línea eléctrica
+- `bandpass(signal, fs, lowcut, highcut, order)` — Butterworth fase cero
 - `apply_filters(eeg, fs, notch_freq)` — aplica CAR → notch → bandpass a todos los canales
 
 ### `artifacts.py`
-- `remove_artifacts_mne(eeg, fs)` — ICA con MNE y detección automática de parpadeos via FZ. Solo para offline (necesita >10 s de señal).
-- `reject_epochs(epochs, threshold_uv)` — máscara booleana de epochs limpios
+- `remove_artifacts_mne(eeg, fs)` — ICA con MNE + detección automática de parpadeos via FZ. Solo offline (>10 s de señal).
+- `reject_epochs(epochs, threshold_uv)` — máscara booleana; descarta epochs con pico-a-pico > umbral
 
 ### `features.py`
-- `extract_features(eeg, fs)` — Welch PSD → potencia en δ θ α β por canal → vector (32,)
-- `AdaptiveClassifier` — nearest centroid calibrado al sujeto con z-score normalización. Métodos: `calibrate()`, `predict()`, `save()`, `load()`
+- `extract_features(eeg, fs)` — Welch PSD → bandpower δθαβ por canal → vector (32,)
+- `AdaptiveClassifier` — nearest centroid z-normalizado. Métodos: `calibrate()`, `predict()`, `save()`, `load()`
 
 ### `pipeline.py`
 - `EEGPipeline` — orquesta todo. Métodos: `process()`, `process_epochs()`, `calibrate()`, `classify()`, `save_calibration()`, `load_calibration()`
 
 ### `realtime.py`
-- `RealtimeProcessor` — buffer circular + ventana deslizante. Método: `push(sample)` → devuelve estado cada `step_sec`
+- `RunningNormalizer` — z-score online (Welford). Propiedades: `ready`, `normalize(signal)`
+- `RealtimeProcessor` — buffer circular + ventana deslizante. `push(sample)` → `ndarray (500, 8)` limpio y normalizado cada 250 ms, o `None`
 
 ---
 
@@ -212,7 +250,7 @@ while True:
 
 | Índice | Canal | Región |
 |--------|-------|--------|
-| 0 | FZ | Frontal central — más cercano a los ojos, usado como proxy EOG |
+| 0 | FZ | Frontal central — proxy EOG (más cercano a los ojos) |
 | 1 | C3 | Motor izquierdo |
 | 2 | CZ | Motor central |
 | 3 | C4 | Motor derecho |
@@ -220,3 +258,12 @@ while True:
 | 5 | PO7 | Occipital izquierdo |
 | 6 | OZ | Occipital central |
 | 7 | PO8 | Occipital derecho |
+
+## Bandas de frecuencia
+
+| Banda | Rango | Índice en features | Asociado a |
+|-------|-------|--------------------|------------|
+| Delta | 0.5–4 Hz | `ch*4 + 0` | Sueño, drift |
+| Theta | 4–8 Hz | `ch*4 + 1` | Somnolencia |
+| **Alpha** | **8–12 Hz** | **`ch*4 + 2`** | **Relajación, ojos cerrados** |
+| **Beta** | **13–30 Hz** | **`ch*4 + 3`** | **Concentración activa** |

@@ -1,6 +1,12 @@
 # Model Fine-Tuning Pipeline
 
-Fine-tuning de **EEGNetv4** sobre datos del sujeto de prueba para clasificar estados mentales (FOCUS / RELAX) con el Unicorn Black.
+Fine-tuning de **EEGNetv4** sobre datos del sujeto de prueba.
+
+> **Para enviar a Unity junto con el pipeline manual** usa `../stream.py` — corre ambos en paralelo y manda un solo paquete UDP con todos los valores.
+> Este README cubre el entrenamiento y uso **standalone** del modelo.
+
+**Output `focus_score()`:** `float 0.0–1.0` — probabilidad de estado FOCUS.
+**Output `stream()`:** JSON por UDP `{"focus": 0.73}` cada ~250 ms.
 
 ---
 
@@ -8,48 +14,54 @@ Fine-tuning de **EEGNetv4** sobre datos del sujeto de prueba para clasificar est
 
 ### El modelo base — EEGNetv4
 
-EEGNetv4 es una red neuronal convolucional compacta diseñada específicamente para BCI con pocos datos. Su arquitectura tiene dos bloques principales:
+EEGNetv4 es una CNN compacta diseñada para BCI con pocos datos. Tiene dos bloques:
 
-1. **Depthwise convolution temporal** — aprende filtros de frecuencia específicos del EEG (equivalente al bandpass manual, pero aprendido de los datos)
-2. **Separable convolution espacial** — aprende cómo combinar los 8 canales para maximizar la separabilidad entre clases (equivalente a seleccionar los electrodos más informativos)
+1. **Depthwise temporal convolution** — aprende filtros de frecuencia del EEG (equivalente al bandpass del pipeline manual, pero aprendido de datos reales)
+2. **Separable spatial convolution** — aprende qué combinación de los 8 canales maximiza la separabilidad entre clases
 
-El modelo descargado fue preentrenado en **Motor Imagery** (imaginería de movimiento de mano izquierda vs derecha, dataset Lee 2019). No clasifica FOCUS/RELAX directamente, pero sus capas inferiores ya saben cómo extraer features temporales y espaciales de señal EEG real. Eso es lo que se transfiere.
+El modelo descargado fue preentrenado en **Motor Imagery** (imaginería de mano izquierda vs derecha, Lee 2019). No clasifica FOCUS/RELAX directamente, pero sus capas inferiores ya saben extraer features temporales y espaciales de EEG real. Eso es lo que se transfiere.
 
-### Por qué fine-tuning en dos fases
+### Fine-tuning en dos fases
 
-La tarea cambia (Motor Imagery → FOCUS/RELAX) pero la estructura de la señal es la misma (EEG de 8 canales a 250 Hz). El problema es que si se descongelan todas las capas desde el inicio con pocos datos, el modelo sobreajusta antes de redirigir los features.
+Con solo 2 minutos de datos, entrenar desde cero sobreajustaría antes de aprender algo útil. El pretrained backbone resuelve esto:
 
 **Fase 1 — backbone congelado (10 epochs, LR=1e-3)**
-
-Solo el clasificador final entrena. El backbone ya extrae features de EEG; el objetivo aquí es aprender a qué espacio de features pertenece cada clase (RELAX vs FOCUS) sin tocar los filtros aprendidos. Converge rápido porque es un problema lineal sobre features ya estables.
+Solo el clasificador final entrena. El objetivo es redirigir los features existentes hacia FOCUS/RELAX sin tocar los filtros aprendidos. Converge rápido porque es un problema casi lineal.
 
 **Fase 2 — todas las capas (20 epochs, LR=1e-4)**
+Con el clasificador ya orientado, se descongelan todas las capas con LR 10× más bajo. Los filtros espaciales se ajustan al sujeto específico sin destruir el preentrenamiento. El LR bajo es crítico: cambios grandes en esta fase arruinarían los pesos base.
 
-Con el clasificador ya orientado hacia la tarea correcta, se descongelan todas las capas y se entrena con un learning rate 10 veces más bajo. Esto permite que los filtros espaciales y temporales se ajusten al sujeto específico sin destruir lo aprendido en el preentrenamiento. El LR bajo es clave: cambios grandes en esta fase arruinarían los pesos preentrenados.
+### Output del modelo — focus score
+
+La salida principal para el juego es `focus_score()`, que devuelve `predict_proba()[1]` — la probabilidad de que el estado sea FOCUS. Es un float entre 0.0 y 1.0:
+
+- `0.0` — completamente relajado
+- `0.5` — estado neutro / transición
+- `1.0` — concentración máxima
+
+Unity recibe este valor por UDP y lo mapea a velocidad de tiles, multiplicadores de puntos, efectos visuales, etc.
 
 ### Data augmentation
 
-Con ~2 minutos de datos el dataset es pequeño. Cada epoch pasa por dos transformaciones aleatorias durante el entrenamiento:
-- **Ruido gaussiano leve** (σ = 0.5 µV) — simula variabilidad natural de la señal
-- **Shift temporal aleatorio** (±100 ms) — el modelo aprende a ser invariante a pequeñas variaciones de timing
-
-Esto multiplica la variabilidad efectiva del dataset sin necesidad de grabar más datos.
+Con ~2 minutos de datos el dataset es pequeño. Durante el entrenamiento cada epoch pasa por:
+- **Ruido gaussiano leve** (σ = 0.5 µV) — variabilidad natural de la señal
+- **Shift temporal aleatorio** (±100 ms) — invariancia a pequeñas variaciones de timing
 
 ---
 
 ## ¿Necesito descargar algo manualmente?
 
-**No.** La primera vez que corres `train.py`, braindecode descarga automáticamente ~10 MB desde Hugging Face (`PierreGtch/EEGNetv4`) y los cachea en `~/.cache/huggingface/`. Las siguientes ejecuciones usan el caché.
+**No.** La primera vez que corres `train.py`, braindecode descarga ~10 MB desde Hugging Face (`PierreGtch/EEGNetv4`) y los cachea en `~/.cache/huggingface/`. Las siguientes ejecuciones usan el caché local.
 
 ---
 
-## Flujo completo de uso
+## Flujo completo: de cero a tiempo real
 
 ```
-[1] Instalar
-[2] Grabar calibración con el Unicorn (calibrate.py)
-[3] Entrenar el modelo (train.py)  ← descarga HF automático aquí
-[4] Inferencia en tiempo real (predict.py)
+[1] pip install -r requirements.txt
+[2] python calibrate.py   →  graba 2 min con el Unicorn
+[3] python train.py       →  descarga HF + fine-tune + guarda modelo
+[4] clf.stream(...)       →  loop UDP al juego
 ```
 
 ---
@@ -67,30 +79,26 @@ pip install -r requirements.txt
 
 ## Paso 2 — Grabar calibración
 
-El script `calibrate.py` guía al sujeto a través de bloques alternados de RELAX y FOCUS, graba la señal del Unicorn y guarda los epochs etiquetados.
-
 ```bash
 # Con el Unicorn Black conectado
 python calibrate.py --output data/subject_01.npz
 
-# Sin hardware (señal aleatoria — para probar que el pipeline funciona)
+# Sin hardware (señal aleatoria — para probar el pipeline)
 python calibrate.py --output data/subject_01.npz --mock
 ```
 
 El script hace esto:
 1. Muestra instrucciones en pantalla ("cierra los ojos", "concéntrate")
-2. Graba 30 s por bloque × 2 clases × 2 rondas = **2 minutos totales**
+2. Graba 30 s × 2 clases × 2 rondas = **2 minutos totales**
 3. Divide cada grabación en ventanas de 2 s con 50% de solapamiento
-4. Guarda el archivo `.npz` con dos arrays: `epochs` shape `(n, 500, 8)` y `labels` shape `(n,)`
+4. Guarda `data/subject_01.npz` con arrays `epochs (n, 500, 8)` y `labels (n,)`
 
-Los `.npz` están en `.gitignore`. Guárdalos localmente en la carpeta `data/`.
-
-Para verificar que se grabó bien:
+Los `.npz` están en `.gitignore`. Verificar que se grabó bien:
 ```python
 import numpy as np
 d = np.load('data/subject_01.npz')
 print(d['epochs'].shape)   # ej. (240, 500, 8)
-print(d['labels'])          # [0, 0, ..., 1, 1, ...]  (0=RELAX, 1=FOCUS)
+print(d['labels'])          # [0,0,...,1,1,...]  0=RELAX, 1=FOCUS
 ```
 
 ---
@@ -101,25 +109,17 @@ print(d['labels'])          # [0, 0, ..., 1, 1, ...]  (0=RELAX, 1=FOCUS)
 python train.py --data data/subject_01.npz --output models/subject_01.pt
 ```
 
-Lo que sucede al correr esto:
-1. Descarga EEGNetv4 preentrenado de Hugging Face (~10 MB, primera vez)
-2. Aplica data augmentation al dataset
-3. **Fase 1** (10 epochs): congela el backbone, entrena solo el clasificador
-4. **Fase 2** (20 epochs): descongela todo, LR = 1e-4, ajusta el modelo al sujeto
-5. Guarda un checkpoint cada vez que la `val_acc` mejora
-6. El mejor modelo queda guardado en `models/subject_01.pt`
-
 Salida esperada:
 ```
-Descargando weights desde Hugging Face...
+Descargando weights desde Hugging Face (~10 MB, primera vez)...
 ── Fase 1/30: backbone congelado ──
 Epoch   1/30  val_acc=0.541
-Epoch   2/30  val_acc=0.612
-  -> checkpoint guardado  (mejor=0.612)
+Epoch   2/30  val_acc=0.623
+  -> checkpoint guardado  (mejor=0.623)
 ...
 ── Fase 2/30: todas las capas, LR=1.0e-04 ──
-Epoch  11/30  val_acc=0.708
-  -> checkpoint guardado  (mejor=0.708)
+Epoch  11/30  val_acc=0.741
+  -> checkpoint guardado  (mejor=0.741)
 ...
 Listo. Mejor val_acc: 0.821  →  models/subject_01.pt
 ```
@@ -129,73 +129,117 @@ Parámetros opcionales:
 python train.py \
   --data data/subject_01.npz \
   --output models/subject_01.pt \
-  --phase1-epochs 10 \   # default 10
-  --phase2-epochs 20 \   # default 20
-  --lr 1e-3 \            # default 1e-3
-  --batch-size 16        # default 16
+  --phase1-epochs 10 \
+  --phase2-epochs 20 \
+  --lr 1e-3 \
+  --batch-size 16
 ```
 
 ---
 
-## Paso 4 — Inferencia en tiempo real
+## Paso 4 — Streaming en tiempo real al juego
+
+### Opción A — usando `stream()` (recomendado)
 
 ```python
 from predict import EEGClassifier
-import numpy as np
 
 clf = EEGClassifier('models/subject_01.pt')
 
-# En tu loop de adquisición del Unicorn:
-buffer = []
-while True:
-    sample = unicorn.get_sample()   # (8,)
-    buffer.append(sample)
+# Conectar Unicorn y definir get_sample
+import UnicornPy, numpy as np
+unicorn = UnicornPy.Unicorn(UnicornPy.Unicorn.GetAvailableDevices()[0])
+unicorn.StartAcquisition(TestSignalEnabled=False)
+frame = np.zeros((1, 13), dtype=np.float32)
 
-    if len(buffer) == 500:          # ventana de 2 s completa
-        epoch = np.array(buffer)    # (500, 8)
-        state = clf.predict(epoch)  # 'FOCUS' o 'RELAX'
-        send_to_game(state)
-        buffer = buffer[62:]        # avanzar 0.25 s (ventana deslizante)
+def get_sample():
+    unicorn.GetData(1, frame)
+    return frame[0, :8].copy()
+
+# Stream — envía {"focus": 0.73} por UDP cada ~250 ms
+clf.stream(get_sample, host='127.0.0.1', port=5005)
 ```
 
-Para obtener probabilidades en vez de solo la clase:
+En la terminal verás:
+```
+Streaming focus score → udp://127.0.0.1:5005  (Ctrl+C para detener)
+focus=0.731  ██████████████░░░░░░
+```
+
+### Opción B — control manual del loop
+
 ```python
-probs = clf.predict_proba(epoch)
-# probs[0] = P(RELAX),  probs[1] = P(FOCUS)
-print(f"RELAX={probs[0]:.2f}  FOCUS={probs[1]:.2f}")
+from collections import deque
+import numpy as np
+from predict import EEGClassifier
+
+clf    = EEGClassifier('models/subject_01.pt')
+buffer = deque(maxlen=500)
+tick   = 0
+
+while True:
+    sample = get_sample()       # ndarray (8,)
+    buffer.append(sample)
+    tick += 1
+
+    if len(buffer) == 500 and tick % 62 == 0:
+        score = clf.focus_score(np.array(buffer))   # float 0.0–1.0
+        # usar score como quieras antes de enviarlo
+        send_to_game(score)
+```
+
+### Recibir en Unity (C#)
+
+```csharp
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using UnityEngine;
+
+public class EEGReceiver : MonoBehaviour
+{
+    UdpClient udp;
+    public float focusScore = 0f;
+
+    void Start()
+    {
+        udp = new UdpClient(5005);
+        udp.BeginReceive(OnReceive, null);
+    }
+
+    void OnReceive(System.IAsyncResult result)
+    {
+        IPEndPoint ep = null;
+        byte[] data   = udp.EndReceive(result, ref ep);
+        string json   = Encoding.UTF8.GetString(data);
+        // parse {"focus": 0.73}  →  focusScore
+        focusScore = SimpleJSON.Parse(json)["focus"].AsFloat;
+        udp.BeginReceive(OnReceive, null);
+    }
+}
+```
+
+Luego en tu game loop:
+```csharp
+tileSpeed = Mathf.Lerp(minSpeed, maxSpeed, eegReceiver.focusScore);
 ```
 
 ---
 
 ## Referencia de módulos
 
-### `calibrate.py`
-Sesión guiada de grabación. Lee el Unicorn muestra por muestra, alterna bloques RELAX/FOCUS con instrucciones en pantalla, exporta `.npz` listo para `train.py`. `--mock` simula el hardware con ruido gaussiano.
-
-### `dataset.py`
-`EEGDataset(epochs, labels, augment=True)` — convierte el `.npz` en un `Dataset` de PyTorch. Transpone los ejes para que EEGNet reciba `(batch, canales, muestras)`. Con `augment=True` aplica ruido gaussiano y shift temporal en cada batch.
-
-### `model.py`
-- `from_pretrained_hub(n_classes)` — descarga EEGNetv4 de Hugging Face y lo retorna listo para fine-tuning
-- `freeze_backbone(model)` — congela todas las capas excepto el clasificador final
-- `build_model(n_classes, pretrained_path)` — crea el modelo desde cero o carga un `.pt` local (uso interno)
-
-### `train.py`
-Orquesta el fine-tuning en dos fases. Lee el `.npz`, crea los DataLoaders, descarga el modelo base, corre las dos fases y guarda el mejor checkpoint por `val_acc`.
-
-### `predict.py`
-`EEGClassifier(model_path)` — carga el `.pt` y expone `predict(epoch)` y `predict_proba(epoch)`. Maneja internamente la transposición de ejes y la conversión a tensor.
+| Archivo | Responsabilidad |
+|---------|----------------|
+| `calibrate.py` | Sesión guiada 2 min → `.npz` con epochs etiquetados |
+| `dataset.py` | `torch.Dataset` + augmentation (ruido + time shift) |
+| `model.py` | EEGNetv4, `from_pretrained_hub()`, `freeze_backbone()` |
+| `train.py` | Fine-tuning en dos fases, checkpoint por mejor val_acc |
+| `predict.py` | `focus_score()` → float, `stream()` → UDP loop, `predict_proba()` → array |
 
 ---
-
-## Modelo preentrenado
-
-`PierreGtch/EEGNetv4` · `EEGNetv4_Lee2019_MI.ckpt`
-
-Entrenado en Motor Imagery (imaginería de mano izquierda vs derecha, 2 clases). La tarea es diferente a FOCUS/RELAX, pero las capas de filtrado temporal y espacial generalizan bien entre paradigmas de EEG. El fine-tuning redirige la salida a la tarea correcta.
 
 ## Extender a más clases
 
 1. Agregar entradas a `CLASSES` en `calibrate.py`
 2. Actualizar `LABEL_MAP` en `predict.py`
-3. Re-grabar la calibración y re-entrenar
+3. Re-grabar calibración y re-entrenar
