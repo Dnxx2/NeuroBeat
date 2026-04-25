@@ -8,7 +8,7 @@ Juego de ritmo (Piano Tiles) controlado por señales EEG del Unicorn Black.
 
 **Pasos para integrar:**
 
-1. Abrir Unity Hub → **New Project** → elegir cualquier template (2D recomendado)
+1. Abrir Unity Hub → **New Project** → elegir cualquier template 2D
 2. En **Location**, apuntar a la carpeta `game/` de este repo
 3. Unity creará `ProjectSettings/`, `Packages/`, etc. dentro de `game/`
 4. El script `Assets/Scripts/EEGReceiver.cs` ya estará ahí al abrir el proyecto
