@@ -7,8 +7,20 @@ Paquete UDP cada ~250 ms:
   "alpha":      0.41,   ← bandpower alpha frontal normalizado (float 0-1)
   "beta":       0.62,   ← bandpower beta  frontal normalizado (float 0-1)
   "theta":      0.18,   ← bandpower theta frontal normalizado (float 0-1)
-  "engagement": 0.60    ← beta/(alpha+beta), índice DSP de concentración (float 0-1)
+  "engagement": 0.60,   ← beta/(alpha+beta), índice DSP de concentración (float 0-1)
+  "accel_x":    0.02,   ← acelerómetro X (mg), pass-through sin filtro
+  "accel_y":   -0.01,   ← acelerómetro Y (mg)
+  "accel_z": 1001.3,    ← acelerómetro Z (mg, ~1000 = 1g en reposo)
+  "gyro_x":    -0.5,    ← giroscopio X (°/s)
+  "gyro_y":     1.2,    ← giroscopio Y (°/s)
+  "gyro_z":     0.3     ← giroscopio Z (°/s)
 }
+
+Frame UnicornPy (17 canales):
+  [0:8]   EEG    FZ C3 CZ C4 PZ PO7 OZ PO8  (µV)
+  [8:11]  Accel  AccX AccY AccZ               (mg)
+  [11:14] Gyro   GyrX GyrY GyrZ               (°/s)
+  [14:17] Misc   Battery Counter Validation   (ignorados)
 
 Usage:
     python stream.py --model model-finetuning/models/subject_01.pt
@@ -38,12 +50,13 @@ from realtime import RealtimeProcessor    # manual-filtering/realtime.py
 from features import extract_features, BANDS, BAND_NAMES, FRONTAL_IDX
 from predict  import EEGClassifier        # model-finetuning/predict.py
 
-FS      = 250
-N_CH    = 8
-N_BANDS = len(BANDS)
-ALPHA_I = BAND_NAMES.index('alpha')
-BETA_I  = BAND_NAMES.index('beta')
-THETA_I = BAND_NAMES.index('theta')
+FS        = 250
+N_CH      = 8    # canales EEG
+N_FRAME   = 17   # frame completo UnicornPy: 8 EEG + 3 accel + 3 gyro + 3 misc
+N_BANDS   = len(BANDS)
+ALPHA_I   = BAND_NAMES.index('alpha')
+BETA_I    = BAND_NAMES.index('beta')
+THETA_I   = BAND_NAMES.index('theta')
 
 
 def _band_scores(window: np.ndarray) -> dict:
@@ -78,8 +91,12 @@ class CombinedStreamer:
         self._model_q  = queue.Queue(maxsize=100)
 
         # Resultados compartidos entre threads
-        self._results  = {'focus': 0.0, 'alpha': 0.0, 'beta': 0.0,
-                          'theta': 0.0, 'engagement': 0.0}
+        self._results  = {
+            'focus': 0.0, 'alpha': 0.0, 'beta': 0.0,
+            'theta': 0.0, 'engagement': 0.0,
+            'accel_x': 0.0, 'accel_y': 0.0, 'accel_z': 0.0,
+            'gyro_x':  0.0, 'gyro_y':  0.0, 'gyro_z':  0.0,
+        }
         self._lock     = threading.Lock()
         self._running  = False
 
@@ -130,7 +147,10 @@ class CombinedStreamer:
             f = payload['focus']
             print(f"\rfocus={f:.2f} [{'█'*int(f*20):<20}] "
                   f"α={payload['alpha']:.2f} β={payload['beta']:.2f} "
-                  f"eng={payload['engagement']:.2f}", end='', flush=True)
+                  f"eng={payload['engagement']:.2f}  "
+                  f"acc=({payload['accel_x']:+.0f},{payload['accel_y']:+.0f},{payload['accel_z']:+.0f}) "
+                  f"gyr=({payload['gyro_x']:+.1f},{payload['gyro_y']:+.1f},{payload['gyro_z']:+.1f})",
+                  end='', flush=True)
             time.sleep(0.25)
 
     # ── API pública ───────────────────────────────────────────────────────────
@@ -150,10 +170,19 @@ class CombinedStreamer:
         print(f"Streaming → udp://{self.host}:{self.port}  (Ctrl+C para detener)\n")
         try:
             while True:
-                sample = get_sample_fn()
+                frame = get_sample_fn()       # (17,): EEG[0:8] accel[8:11] gyro[11:14] misc[14:17]
+                eeg_sample = frame[:N_CH]     # (8,) para los workers de EEG
+                # IMU pasa directo al resultado — sin filtro, actualización por muestra
+                with self._lock:
+                    self._results['accel_x'] = round(float(frame[8]),  2)
+                    self._results['accel_y'] = round(float(frame[9]),  2)
+                    self._results['accel_z'] = round(float(frame[10]), 2)
+                    self._results['gyro_x']  = round(float(frame[11]), 2)
+                    self._results['gyro_y']  = round(float(frame[12]), 2)
+                    self._results['gyro_z']  = round(float(frame[13]), 2)
                 for q in (self._manual_q, self._model_q):
                     try:
-                        q.put_nowait(sample)
+                        q.put_nowait(eeg_sample)
                     except queue.Full:
                         pass
         except KeyboardInterrupt:
@@ -179,7 +208,12 @@ if __name__ == '__main__':
 
     if args.mock:
         rng = np.random.default_rng(0)
-        get_sample = lambda: (rng.standard_normal(N_CH) * 50e-6).astype(np.float32)
+        def get_sample():
+            eeg   = (rng.standard_normal(N_CH) * 50e-6).astype(np.float32)
+            accel = (rng.standard_normal(3) * 30 + [0, 0, 1000]).astype(np.float32)
+            gyro  = (rng.standard_normal(3) * 3).astype(np.float32)
+            misc  = np.zeros(3, dtype=np.float32)
+            return np.concatenate([eeg, accel, gyro, misc])
     else:
         import UnicornPy
         devices = UnicornPy.Unicorn.GetAvailableDevices()
@@ -187,10 +221,10 @@ if __name__ == '__main__':
             raise RuntimeError("No se encontró ningún Unicorn Black conectado.")
         unicorn = UnicornPy.Unicorn(devices[0])
         unicorn.StartAcquisition(TestSignalEnabled=False)
-        _frame = np.zeros((1, N_CH + 5), dtype=np.float32)
+        _frame = np.zeros((1, N_FRAME), dtype=np.float32)
         def get_sample():
             unicorn.GetData(1, _frame)
-            return _frame[0, :N_CH].copy()
+            return _frame[0].copy()
 
     CombinedStreamer(
         model_path=args.model,

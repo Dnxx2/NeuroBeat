@@ -32,6 +32,21 @@ public class EEGReceiver : MonoBehaviour
     [Tooltip("beta / (alpha + beta) — índice clásico de engagement (0-1)")]
     public float engagement = 0f;
 
+    [Header("IMU — actualizados cada muestra (~4 ms)")]
+    [Tooltip("Acelerómetro X en mg (±2g range). En reposo: X≈0, Y≈0, Z≈1000")]
+    public float accelX = 0f;
+    [Tooltip("Acelerómetro Y en mg")]
+    public float accelY = 0f;
+    [Tooltip("Acelerómetro Z en mg")]
+    public float accelZ = 0f;
+
+    [Tooltip("Giroscopio X en °/s. En reposo ≈ 0")]
+    public float gyroX = 0f;
+    [Tooltip("Giroscopio Y en °/s")]
+    public float gyroY = 0f;
+    [Tooltip("Giroscopio Z en °/s")]
+    public float gyroZ = 0f;
+
     [Header("Config")]
     public int port = 5005;
 
@@ -42,6 +57,8 @@ public class EEGReceiver : MonoBehaviour
 
     // Staging buffer — el thread UDP escribe aquí, Update() copia al main thread
     float _sFocus, _sAlpha, _sBeta, _sTheta, _sEngagement;
+    float _sAccelX, _sAccelY, _sAccelZ;
+    float _sGyroX,  _sGyroY,  _sGyroZ;
     readonly object _lock = new object();
 
     void Start()
@@ -69,6 +86,12 @@ public class EEGReceiver : MonoBehaviour
                     _sBeta       = ParseFloat(json, "beta");
                     _sTheta      = ParseFloat(json, "theta");
                     _sEngagement = ParseFloat(json, "engagement");
+                    _sAccelX     = ParseFloat(json, "accel_x");
+                    _sAccelY     = ParseFloat(json, "accel_y");
+                    _sAccelZ     = ParseFloat(json, "accel_z");
+                    _sGyroX      = ParseFloat(json, "gyro_x");
+                    _sGyroY      = ParseFloat(json, "gyro_y");
+                    _sGyroZ      = ParseFloat(json, "gyro_z");
                 }
             }
             catch { /* ignorar errores de red durante shutdown */ }
@@ -85,6 +108,12 @@ public class EEGReceiver : MonoBehaviour
             beta       = _sBeta;
             theta      = _sTheta;
             engagement = _sEngagement;
+            accelX     = _sAccelX;
+            accelY     = _sAccelY;
+            accelZ     = _sAccelZ;
+            gyroX      = _sGyroX;
+            gyroY      = _sGyroY;
+            gyroZ      = _sGyroZ;
         }
     }
 

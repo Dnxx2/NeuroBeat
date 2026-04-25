@@ -14,7 +14,13 @@ Puerto **5005**, un JSON cada **~250 ms**:
   "alpha":      0.41,
   "beta":       0.62,
   "theta":      0.18,
-  "engagement": 0.60
+  "engagement": 0.60,
+  "accel_x":    12.4,
+  "accel_y":   -8.1,
+  "accel_z":  998.3,
+  "gyro_x":    -0.5,
+  "gyro_y":     1.2,
+  "gyro_z":     0.3
 }
 ```
 
@@ -25,8 +31,12 @@ Puerto **5005**, un JSON cada **~250 ms**:
 | `beta` | DSP manual | 0–1 | Potencia beta frontal normalizada (concentración) |
 | `theta` | DSP manual | 0–1 | Potencia theta frontal normalizada (somnolencia) |
 | `engagement` | DSP manual | 0–1 | `beta / (alpha + beta)` — índice de concentración clásico |
+| `accel_x/y/z` | IMU pass-through | mg | Acelerómetro. En reposo: X≈0, Y≈0, Z≈1000 (1g) |
+| `gyro_x/y/z` | IMU pass-through | °/s | Giroscopio. En reposo ≈ 0 |
 
-Todos los valores flotan entre 0 y 1. `alpha + beta + theta ≈ 1.0` (son proporciones relativas).
+`alpha + beta + theta ≈ 1.0` (proporciones relativas). Los valores IMU son físicos sin normalizar — úsalos tal cual para detectar inclinación o rotación de cabeza.
+
+> **Nota sobre canales del Unicorn Black:** el frame tiene 17 canales: `[0:8]` EEG, `[8:11]` acelerómetro, `[11:14]` giroscopio, `[14:17]` battery/counter/validation. Los electrodos REF y GND son hardware para referencia diferencial — no generan canales de datos separados.
 
 ---
 
@@ -92,12 +102,20 @@ using UnityEngine;
 
 public class EEGReceiver : MonoBehaviour
 {
-    [Header("Valores EEG — leer desde otros scripts")]
+    [Header("Valores EEG — actualizados cada ~250 ms")]
     public float focus      = 0f;   // 0-1, del modelo
     public float alpha      = 0f;   // 0-1, relajación
     public float beta       = 0f;   // 0-1, concentración
     public float theta      = 0f;   // 0-1, somnolencia
     public float engagement = 0f;   // 0-1, beta/(alpha+beta)
+
+    [Header("IMU — actualizados por muestra (~4 ms)")]
+    public float accelX = 0f;  // mg, en reposo ≈ 0
+    public float accelY = 0f;  // mg, en reposo ≈ 0
+    public float accelZ = 0f;  // mg, en reposo ≈ 1000
+    public float gyroX  = 0f;  // °/s
+    public float gyroY  = 0f;  // °/s
+    public float gyroZ  = 0f;  // °/s
 
     [Header("Config")]
     public int port = 5005;
@@ -106,8 +124,8 @@ public class EEGReceiver : MonoBehaviour
     Thread     _thread;
     bool       _running;
 
-    // Buffer thread-safe
     float _tFocus, _tAlpha, _tBeta, _tTheta, _tEngagement;
+    float _tAccelX, _tAccelY, _tAccelZ, _tGyroX, _tGyroY, _tGyroZ;
     readonly object _lock = new object();
 
     void Start()
@@ -135,13 +153,18 @@ public class EEGReceiver : MonoBehaviour
                     _tBeta       = ParseFloat(json, "beta");
                     _tTheta      = ParseFloat(json, "theta");
                     _tEngagement = ParseFloat(json, "engagement");
+                    _tAccelX     = ParseFloat(json, "accel_x");
+                    _tAccelY     = ParseFloat(json, "accel_y");
+                    _tAccelZ     = ParseFloat(json, "accel_z");
+                    _tGyroX      = ParseFloat(json, "gyro_x");
+                    _tGyroY      = ParseFloat(json, "gyro_y");
+                    _tGyroZ      = ParseFloat(json, "gyro_z");
                 }
             }
             catch { /* ignorar errores de red */ }
         }
     }
 
-    // Copiar al main thread en Update (Unity solo permite tocar variables en main thread)
     void Update()
     {
         lock (_lock)
@@ -151,6 +174,12 @@ public class EEGReceiver : MonoBehaviour
             beta       = _tBeta;
             theta      = _tTheta;
             engagement = _tEngagement;
+            accelX     = _tAccelX;
+            accelY     = _tAccelY;
+            accelZ     = _tAccelZ;
+            gyroX      = _tGyroX;
+            gyroY      = _tGyroY;
+            gyroZ      = _tGyroZ;
         }
     }
 

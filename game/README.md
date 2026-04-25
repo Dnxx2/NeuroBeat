@@ -54,6 +54,8 @@ public class TileController : MonoBehaviour
 
 ### Valores disponibles en `EEGReceiver`
 
+**EEG — actualizados cada ~250 ms**
+
 | Campo | Rango | Fuente | Uso sugerido |
 |-------|-------|--------|--------------|
 | `focus` | 0–1 | Modelo EEGNet | Velocidad de tiles, dificultad |
@@ -62,7 +64,15 @@ public class TileController : MonoBehaviour
 | `beta` | 0–1 | DSP (normalizado) | Intensidad de efectos de concentración |
 | `theta` | 0–1 | DSP (normalizado) | Somnolencia / advertencia al jugador |
 
-Todos se actualizan automáticamente cada ~250 ms. Son thread-safe — el receptor UDP corre en un thread propio y copia los valores al main thread en `Update()`.
+**IMU — actualizados por muestra (~4 ms, pass-through sin filtro)**
+
+| Campo | Unidad | En reposo | Uso sugerido |
+|-------|--------|-----------|--------------|
+| `accelX` / `accelY` | mg | ≈ 0 | Inclinación lateral / frontal de cabeza |
+| `accelZ` | mg | ≈ 1000 (1g) | Inclinación vertical |
+| `gyroX` / `gyroY` / `gyroZ` | °/s | ≈ 0 | Velocidad de rotación de cabeza |
+
+Todos son thread-safe — el receptor UDP corre en un thread propio y copia los valores al main thread en `Update()`.
 
 ---
 
