@@ -9,6 +9,7 @@ Usage:
 """
 import argparse
 import time
+from pathlib import Path
 import numpy as np
 
 
@@ -67,6 +68,7 @@ def run_calibration(get_sample, output_path: str) -> None:
     epochs_arr = np.concatenate(all_epochs)
     labels_arr = np.concatenate(all_labels)
 
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     np.savez(output_path, epochs=epochs_arr, labels=labels_arr)
     dist = np.bincount(labels_arr)
     print(f"\nGuardado en '{output_path}'")
