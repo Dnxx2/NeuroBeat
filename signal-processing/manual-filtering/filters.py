@@ -2,6 +2,11 @@ import numpy as np
 from scipy.signal import butter, filtfilt, iirnotch
 
 
+def common_average_reference(eeg: np.ndarray) -> np.ndarray:
+    """Subtract the mean across channels from every sample. (n_samples, n_channels)"""
+    return eeg - eeg.mean(axis=1, keepdims=True)
+
+
 def notch(signal: np.ndarray, fs: float = 250.0, freq: float = 60.0, Q: float = 30.0) -> np.ndarray:
     b, a = iirnotch(freq, Q, fs)
     return filtfilt(b, a, signal)
@@ -15,9 +20,10 @@ def bandpass(signal: np.ndarray, fs: float = 250.0, lowcut: float = 0.5,
 
 
 def apply_filters(eeg: np.ndarray, fs: float = 250.0, notch_freq: float = 60.0) -> np.ndarray:
-    """eeg: (n_samples, n_channels) → filtered copy"""
-    out = np.empty_like(eeg, dtype=np.float64)
-    for ch in range(eeg.shape[1]):
-        s = notch(eeg[:, ch].astype(np.float64), fs, notch_freq)
-        out[:, ch] = bandpass(s, fs)
-    return out
+    """CAR → notch → bandpass.  eeg: (n_samples, n_channels)"""
+    out = common_average_reference(eeg.astype(np.float64))
+    result = np.empty_like(out)
+    for ch in range(out.shape[1]):
+        s = notch(out[:, ch], fs, notch_freq)
+        result[:, ch] = bandpass(s, fs)
+    return result

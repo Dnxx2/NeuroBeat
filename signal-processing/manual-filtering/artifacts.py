@@ -1,23 +1,30 @@
 import numpy as np
-from sklearn.decomposition import FastICA
+
+# Channel names matching Unicorn Black layout
+_CH_NAMES = ['FZ', 'C3', 'CZ', 'C4', 'PZ', 'PO7', 'OZ', 'PO8']
 
 
-def remove_artifacts_ica(eeg: np.ndarray, n_components: int = 8,
-                          variance_thresh_factor: float = 3.0) -> np.ndarray:
+def remove_artifacts_mne(eeg: np.ndarray, fs: float = 250.0) -> np.ndarray:
     """
-    eeg: (n_samples, n_channels)
-
-    Removes ICA components whose variance exceeds median * thresh_factor.
-    Requires n_samples >> n_components; skip for short windows (use realtime path instead).
+    Offline ICA via MNE with automatic blink detection using FZ as EOG proxy.
+    eeg: (n_samples, 8) — needs at least ~10 s of data to be stable.
     """
-    ica = FastICA(n_components=n_components, random_state=42, max_iter=1000, tol=1e-4)
-    sources = ica.fit_transform(eeg)            # (n_samples, n_components)
+    import mne
+    mne.set_log_level('WARNING')
 
-    variances = np.var(sources, axis=0)
-    threshold = np.median(variances) * variance_thresh_factor
-    sources[:, variances > threshold] = 0.0
+    info = mne.create_info(_CH_NAMES, sfreq=fs, ch_types='eeg')
+    raw = mne.io.RawArray(eeg.T * 1e6, info)   # MNE works in µV internally
+    raw.set_montage('standard_1020')
 
-    return sources @ ica.mixing_.T + ica.mean_  # reconstruct
+    ica = mne.preprocessing.ICA(n_components=8, random_state=42)
+    ica.fit(raw)
+
+    # FZ is the closest electrode to the eyes in the Unicorn layout
+    eog_idx, _ = ica.find_bads_eog(raw, ch_name='FZ', threshold=3.0)
+    ica.exclude = eog_idx
+
+    raw_clean = ica.apply(raw.copy())
+    return (raw_clean.get_data().T) * 1e-6   # back to volts
 
 
 def reject_epochs(epochs: np.ndarray, threshold_uv: float = 100e-6) -> np.ndarray:
@@ -25,5 +32,5 @@ def reject_epochs(epochs: np.ndarray, threshold_uv: float = 100e-6) -> np.ndarra
     epochs: (n_epochs, n_samples, n_channels)
     Returns boolean mask — True for clean epochs.
     """
-    peak_to_peak = epochs.max(axis=1) - epochs.min(axis=1)  # (n_epochs, n_channels)
+    peak_to_peak = epochs.max(axis=1) - epochs.min(axis=1)
     return np.all(peak_to_peak < threshold_uv, axis=1)
