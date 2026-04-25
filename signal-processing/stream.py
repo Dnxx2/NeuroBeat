@@ -215,16 +215,21 @@ if __name__ == '__main__':
             misc  = np.zeros(3, dtype=np.float32)
             return np.concatenate([eeg, accel, gyro, misc])
     else:
-        import UnicornPy
-        devices = UnicornPy.Unicorn.GetAvailableDevices()
+        try:
+            from api.Lib import UnicornPy
+        except ImportError:
+            from api.API_Lib import UnicornPy
+        devices = UnicornPy.GetAvailableDevices(True)
         if not devices:
             raise RuntimeError("No se encontró ningún Unicorn Black conectado.")
         unicorn = UnicornPy.Unicorn(devices[0])
-        unicorn.StartAcquisition(TestSignalEnabled=False)
-        _frame = np.zeros((1, N_FRAME), dtype=np.float32)
+        numberOfAcquiredChannels  = unicorn.GetNumberOfAcquiredChannels()
+        receiveBufferBufferLength = numberOfAcquiredChannels * 4  # FrameLength=1
+        receiveBuffer             = bytearray(receiveBufferBufferLength)
+        unicorn.StartAcquisition(True)
         def get_sample():
-            unicorn.GetData(1, _frame)
-            return _frame[0].copy()
+            unicorn.GetData(1, receiveBuffer, receiveBufferBufferLength)
+            return np.frombuffer(receiveBuffer, dtype=np.float32).copy()
 
     CombinedStreamer(
         model_path=args.model,
