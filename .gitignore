@@ -18,6 +18,9 @@ game/MemoryCaptures/
 game/Assets/Plugins/Editor/JetBrains*
 game/.idea/
 
+# ──API
+api/Lib
+
 # ── Python ─────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
