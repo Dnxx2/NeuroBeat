@@ -1,7 +1,3 @@
-# Claude Code
-CLAUDE.md
-.claude/
-
 # ── Unity ──────────────────────────────────────────────────────────────────
 game/[Ll]ibrary/
 game/[Tt]emp/
@@ -60,6 +56,10 @@ build/
 **/*.bin
 model-finetuning/checkpoints/
 model-finetuning/runs/
+
+# Claude Code
+CLAUDE.md
+.claude/
 
 # ── OS / editors ───────────────────────────────────────────────────────────
 .DS_Store
