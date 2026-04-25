@@ -44,6 +44,7 @@ import numpy as np
 _HERE = Path(__file__).parent
 sys.path.insert(0, str(_HERE / 'manual-filtering'))
 sys.path.insert(0, str(_HERE / 'model-finetuning'))
+sys.path.insert(0, str(_HERE.parent))
 
 from pipeline import EEGPipeline          # manual-filtering/pipeline.py
 from realtime import RealtimeProcessor    # manual-filtering/realtime.py
@@ -218,7 +219,7 @@ if __name__ == '__main__':
         try:
             from api.Lib import UnicornPy
         except ImportError:
-            from api.API_Lib import UnicornPy
+            from api.Lib import UnicornPy
         devices = UnicornPy.GetAvailableDevices(True)
         if not devices:
             raise RuntimeError("No se encontró ningún Unicorn Black conectado.")
