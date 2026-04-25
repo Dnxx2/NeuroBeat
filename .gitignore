@@ -1,0 +1,69 @@
+# Claude Code
+CLAUDE.md
+
+# ── Unity ──────────────────────────────────────────────────────────────────
+game/[Ll]ibrary/
+game/[Tt]emp/
+game/[Oo]bj/
+game/[Bb]uild/
+game/[Bb]uilds/
+game/[Ll]ogs/
+game/[Uu]ser[Ss]ettings/
+game/[Mm]em[Pp]rofiler/
+game/[Rr]ecordings/
+game/[Ss]ampleScenes/
+game/[Aa]ssets/AssetStoreTools*
+game/*.csproj
+game/*.sln
+game/.vs/
+game/ExportedObj/
+game/MemoryCaptures/
+game/Assets/Plugins/Editor/JetBrains*
+game/.idea/
+
+# ── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.ipynb_checkpoints/
+
+# EEG data files (can be large / sensitive)
+**/*.csv
+**/*.edf
+**/*.bdf
+**/*.gdf
+**/*.fif
+**/*.set
+**/*.h5
+**/*.hdf5
+**/*.pkl
+**/*.npy
+**/*.npz
+
+# ML model weights / checkpoints
+**/*.pt
+**/*.pth
+**/*.ckpt
+**/*.safetensors
+**/*.bin
+model-finetuning/checkpoints/
+model-finetuning/runs/
+
+# ── OS / editors ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
