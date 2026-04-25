@@ -5,6 +5,7 @@ Usage:
     python train.py --data data/subject_01.npz --output models/subject_01.pt
 """
 import argparse
+from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
@@ -26,6 +27,7 @@ def _val_acc(model: nn.Module, loader: DataLoader) -> float:
 
 def _save_if_best(model: nn.Module, val_acc: float, best: float, path: str) -> float:
     if val_acc > best:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         torch.save(model.state_dict(), path)
         print(f"  -> checkpoint guardado  (mejor={val_acc:.3f})")
         return val_acc

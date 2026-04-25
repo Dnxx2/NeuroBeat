@@ -106,7 +106,7 @@ print(d['labels'])          # [0,0,...,1,1,...]  0=RELAX, 1=FOCUS
 ## Paso 3 — Entrenar
 
 ```bash
-python train.py --data data/subject_01.npz --output models/subject_01.pt
+python signal-processing/model-finetuning/train.py --data signal-processing/model-finetuning/data/calibration.npz --output /signal-processing/model-finetuning/models/calibrated.pt
 ```
 
 Salida esperada:

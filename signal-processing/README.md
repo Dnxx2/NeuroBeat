@@ -42,14 +42,16 @@ Puerto **5005**, un JSON cada **~250 ms**:
 
 ## Uso — stream combinado (recomendado)
 
+`--model` es obligatorio. Apunta al `.pt` que generó `train.py`.
+
 ```bash
 cd signal-processing
 
 # Con hardware
-python stream.py --model model-finetuning/models/subject_01.pt
+python stream.py --model model-finetuning/models/calibrated.pt
 
 # Con calibración del clasificador manual
-python stream.py --model model-finetuning/models/subject_01.pt \
+python stream.py --model model-finetuning/models/calibrated.pt \
                  --calibration manual-filtering/calibration.npz
 
 # Sin hardware (señal sintética para probar Unity)

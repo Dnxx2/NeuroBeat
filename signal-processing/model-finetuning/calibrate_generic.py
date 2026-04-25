@@ -9,6 +9,7 @@ Usage:
 """
 import argparse
 import time
+from pathlib import Path
 import numpy as np
 
 FS = 250
@@ -54,11 +55,14 @@ def run_calibration(get_sample, output_path: str) -> None:
             all_labels.append(np.full(len(epochs), label_id, dtype=np.int64))
             if not (round_i == N_ROUNDS - 1 and label_id == max(CLASSES)):
                 print("  Descansa 5 s...")
-                time.sleep(5)
+                drain_end = time.time() + 5
+                while time.time() < drain_end:
+                    get_sample()
 
     epochs_arr = np.concatenate(all_epochs)
     labels_arr = np.concatenate(all_labels)
 
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     np.savez(output_path, epochs=epochs_arr, labels=labels_arr)
     dist = np.bincount(labels_arr)
     print(f"\nGuardado en '{output_path}'")
