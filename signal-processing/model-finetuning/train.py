@@ -12,7 +12,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 
 from dataset import EEGDataset
-from model import from_pretrained_hub, freeze_backbone
+from model import build_model, freeze_backbone
+from model import N_CHANNELS, INPUT_SAMPLES
 
 
 def _val_acc(model: nn.Module, loader: DataLoader) -> float:
@@ -20,8 +21,9 @@ def _val_acc(model: nn.Module, loader: DataLoader) -> float:
     correct = total = 0
     with torch.no_grad():
         for X, y in loader:
+            X = X.float()
             correct += (model(X).argmax(dim=1) == y).sum().item()
-            total += len(y)
+            total += y.size(0)
     return correct / total if total else 0.0
 
 
@@ -55,7 +57,7 @@ def train(epochs_data: np.ndarray, labels: np.ndarray,
     n_total   = phase1_epochs + phase2_epochs
 
     print("Descargando weights desde Hugging Face (primera vez ~10 MB, luego caché)...")
-    model = from_pretrained_hub(n_classes=n_classes)
+    model = build_model(n_classes=n_classes)
     criterion = nn.CrossEntropyLoss()
     best_val_acc = 0.0
 
@@ -68,7 +70,9 @@ def train(epochs_data: np.ndarray, labels: np.ndarray,
     for epoch in range(1, phase1_epochs + 1):
         model.train()
         for X, y in train_loader:
+            X = X.float()
             optimizer.zero_grad()
+            print(f"X shape: {X.shape}")
             criterion(model(X), y).backward()
             optimizer.step()
         acc = _val_acc(model, val_loader)
@@ -83,6 +87,7 @@ def train(epochs_data: np.ndarray, labels: np.ndarray,
     for epoch in range(phase1_epochs + 1, n_total + 1):
         model.train()
         for X, y in train_loader:
+            X = X.float()
             optimizer.zero_grad()
             criterion(model(X), y).backward()
             optimizer.step()

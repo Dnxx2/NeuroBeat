@@ -16,17 +16,17 @@ import numpy as np
 
 FrameLength = 1          # 1 muestra por llamada → 250 samples/s, sin pérdida de datos
 FS = 250
-N_CHANNELS = 8
-EPOCH_SAMPLES = 1000    # 2 sec @ 250 Hz
+N_CHANNELS = 1
+EPOCH_SAMPLES = 500    # 2 sec @ 250 Hz
 EPOCH_STEP    = 125    # 50 % overlap
 BLOCK_SEC = 30         # 30 s per class × 2 classes × 2 rounds = 2 min
-N_ROUNDS  = 4
+N_ROUNDS  = 2
 CLASSES = {0: 'RELAX', 1: 'FOCUS'}
 
 
 def record_block(label_id: int, duration_sec: int, get_sample) -> np.ndarray:
-    cue = "Cierra los ojos, respira profundo" if label_id == 0 \
-          else "Concéntrate — cuenta mentalmente de 3 en 3"
+    cue = "Manten los ojos abiertos" if label_id == 0 \
+          else "Parpadea durante 30 segundos"
     print(f"\n[{CLASSES[label_id]}]  {cue}")
     print(f"  Grabando {duration_sec}s... ", end='', flush=True)
 

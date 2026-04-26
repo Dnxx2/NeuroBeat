@@ -17,7 +17,7 @@ N_FEATURES = len(CHANNELS) * len(BANDS)   # 32
 def bandpower(signal: np.ndarray, fs: float, band: tuple) -> float:
     f, psd = welch(signal, fs, nperseg=int(fs))
     mask = (f >= band[0]) & (f <= band[1])
-    return float(np.trapz(psd[mask], f[mask]))
+    return float(np.trapezoid(psd[mask], f[mask]))
 
 
 def extract_features(eeg: np.ndarray, fs: float = 250.0) -> np.ndarray:

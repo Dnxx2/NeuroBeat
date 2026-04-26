@@ -134,9 +134,11 @@ class CombinedStreamer:
                 buf.append(sample)
                 tick += 1
                 if len(buf) == 500 and tick % 62 == 0:
-                    score = self._clf.focus_score(np.array(buf))
+                    raw_score = self._clf.focus_score(np.array(buf) * 10000.0)
+                    prob_parpadeo = 1.0 - raw_score
+                    score_filtrado = 1.0 if prob_parpadeo > 0.85 else 0.0
                     with self._lock:
-                        self._results['focus'] = round(score, 3)
+                        self._results['focus'] = score_filtrado
             except queue.Empty:
                 continue
 
