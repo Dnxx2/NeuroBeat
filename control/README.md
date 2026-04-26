@@ -8,7 +8,7 @@ Scripts que traducen señales EEG e IMU en acciones de control del sistema opera
 
 | Archivo | Qué hace |
 |---------|----------|
-| `gyro_mouse.py` | Mueve el cursor con el giroscopio y hace click izquierdo por concentración EEG |
+| `gyro_mouse.py` | Mueve el cursor con el giroscopio y hace click izquierdo por parpadeo deliberado |
 
 ---
 
@@ -30,11 +30,11 @@ Campos utilizados del paquete:
 |-------|-----|
 | `gyro_x` | Pitch (asentir) → movimiento Y del cursor |
 | `gyro_y` | Yaw (girar cabeza) → movimiento X del cursor |
-| `focus` | Concentración 0–1 → dispara click izquierdo |
+| `focus` | Probabilidad de parpadeo (0–1, saturado a 1.0 cuando > 0.7) → dispara click izquierdo |
 
 ### Lógica de click — Schmitt trigger
 
-El click **no se dispara con un solo pico de concentración**. Funciona con dos umbrales:
+El click **no se dispara con un solo pico de focus**. Funciona con dos umbrales:
 
 ```
 focus
@@ -51,7 +51,7 @@ focus
 4. Regresa a **Armado**
 
 Con los defaults (threshold=0.70, hysteresis=0.25, confirm=3):
-- Se necesitan **3 paquetes × 250ms = 0.75s** de concentración sostenida para clickear
+- Se necesitan **3 paquetes × 250ms = 0.75s** de focus sostenido para clickear
 - Luego hay que bajar el focus a **≤ 0.45** para poder clickear de nuevo
 
 ### Procesamiento del giroscopio
@@ -74,7 +74,7 @@ pip install -r requirements.txt   # desde la raíz del repo
 ```bash
 # Terminal 1 — procesar EEG y transmitir
 cd signal-processing
-python stream.py --model model-finetuning/models/subject_01.pt
+python stream.py --model model-finetuning/models/calibrated.pt
 
 # Terminal 2 — control del mouse
 python control/gyro_mouse.py
@@ -96,7 +96,7 @@ El modo mock genera un giroscopio circular sintético y un focus pulsante que ll
 | `--threshold` | `0.70` | Focus mínimo para contar hacia el click |
 | `--hysteresis` | `0.25` | Cuánto debe bajar focus tras click para re-armarse |
 | `--confirm` | `3` | Paquetes consecutivos sobre umbral = 0.75s |
-| `--sensitivity` | `4.0` | Factor °/s → píxeles |
+| `--sensitivity` | `1.0` | Factor °/s → píxeles |
 | `--deadzone` | `2.0` | Mínimo °/s para mover cursor |
 | `--smoothing` | `0.35` | Coeficiente EMA (0 = sin suavizado) |
 | `--rate` | `30` | Hz de actualización del cursor |
@@ -104,7 +104,7 @@ El modo mock genera un giroscopio circular sintético y un focus pulsante que ll
 
 ```bash
 # Ejemplo: click más fácil, movimiento más sensible
-python control/gyro_mouse.py --threshold 0.60 --confirm 2 --sensitivity 6
+python control/gyro_mouse.py --threshold 0.60 --confirm 2 --sensitivity 3
 ```
 
 ### Display en terminal
@@ -117,5 +117,5 @@ focus=0.41 [######         ] arm [0/3]  dx=  +0 dy=  +0
 ```
 
 - `arm [N/3]` — armado, N paquetes contados hacia el click
-- `wait` — esperando desconcentración para re-armarse
+- `wait` — esperando que el focus baje del umbral bajo para re-armarse
 - `*** CLICK ***` — click disparado este frame

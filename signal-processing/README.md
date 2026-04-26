@@ -26,7 +26,7 @@ Puerto **5005**, un JSON cada **~250 ms**:
 
 | Campo | Fuente | Rango | Qué representa |
 |-------|--------|-------|----------------|
-| `focus` | EEGNet (modelo) | 0–1 | Probabilidad de estado FOCUS |
+| `focus` | EEGNet (modelo) | 0–1 | Probabilidad de parpadeo deliberado; saturado a 1.0 cuando supera 0.7 |
 | `alpha` | DSP manual | 0–1 | Potencia alpha frontal normalizada (relajación) |
 | `beta` | DSP manual | 0–1 | Potencia beta frontal normalizada (concentración) |
 | `theta` | DSP manual | 0–1 | Potencia theta frontal normalizada (somnolencia) |
@@ -34,15 +34,15 @@ Puerto **5005**, un JSON cada **~250 ms**:
 | `accel_x/y/z` | IMU pass-through | mg | Acelerómetro. En reposo: X≈0, Y≈0, Z≈1000 (1g) |
 | `gyro_x/y/z` | IMU pass-through | °/s | Giroscopio. En reposo ≈ 0 |
 
-`alpha + beta + theta ≈ 1.0` (proporciones relativas). Los valores IMU son físicos sin normalizar — úsalos tal cual para detectar inclinación o rotación de cabeza.
+`alpha + beta + theta ≈ 1.0` (proporciones relativas). Los valores IMU son físicos sin normalizar.
 
-> **Nota sobre canales del Unicorn Black:** el frame tiene 17 canales: `[0:8]` EEG, `[8:11]` acelerómetro, `[11:14]` giroscopio, `[14:17]` battery/counter/validation. Los electrodos REF y GND son hardware para referencia diferencial — no generan canales de datos separados.
+> **Nota sobre el frame del Unicorn Black:** 17 canales totales: `[0:8]` EEG, `[8:11]` acelerómetro, `[11:14]` giroscopio, `[14:17]` battery/counter/validation. Los electrodos REF y GND son hardware para referencia diferencial — no generan canales de datos separados.
 
 ---
 
 ## Uso — stream combinado (recomendado)
 
-`--model` es obligatorio. Apunta al `.pt` que generó `train.py`.
+`--model` es **obligatorio**. Apunta al `.pt` que generó `train.py`.
 
 ```bash
 cd signal-processing
@@ -55,14 +55,14 @@ python stream.py --model model-finetuning/models/calibrated.pt \
                  --calibration manual-filtering/calibration.npz
 
 # Sin hardware (señal sintética para probar Unity)
-python stream.py --model model-finetuning/models/subject_01.pt --mock
+python stream.py --model model-finetuning/models/calibrated.pt --mock
 ```
 
 Salida en terminal:
 ```
 Streaming → udp://127.0.0.1:5005  (Ctrl+C para detener)
 
-focus=0.73 [██████████████░░░░░░] α=0.41 β=0.62 eng=0.60
+focus=0.00 [░░░░░░░░░░░░░░░░░░░░] α=0.41 β=0.62 eng=0.60
 ```
 
 ---
@@ -73,15 +73,15 @@ Si el equipo de juego quiere solo un pipeline mientras el otro se desarrolla:
 
 ```bash
 # Solo el modelo (foco puro)
-cd model-finetuning
+cd signal-processing/model-finetuning
 python -c "
 from predict import EEGClassifier
-clf = EEGClassifier('models/subject_01.pt')
+clf = EEGClassifier('models/calibrated.pt')
 clf.stream(get_sample, port=5005)
 "
 
 # Solo el filtrado manual (bandpower)
-cd manual-filtering
+cd signal-processing/manual-filtering
 python -c "
 from realtime import RealtimeProcessor
 proc = RealtimeProcessor()
@@ -105,13 +105,13 @@ using UnityEngine;
 public class EEGReceiver : MonoBehaviour
 {
     [Header("Valores EEG — actualizados cada ~250 ms")]
-    public float focus      = 0f;   // 0-1, del modelo
+    public float focus      = 0f;   // 0-1, parpadeo deliberado
     public float alpha      = 0f;   // 0-1, relajación
     public float beta       = 0f;   // 0-1, concentración
     public float theta      = 0f;   // 0-1, somnolencia
     public float engagement = 0f;   // 0-1, beta/(alpha+beta)
 
-    [Header("IMU — actualizados por muestra (~4 ms)")]
+    [Header("IMU — pass-through sin filtro")]
     public float accelX = 0f;  // mg, en reposo ≈ 0
     public float accelY = 0f;  // mg, en reposo ≈ 0
     public float accelZ = 0f;  // mg, en reposo ≈ 1000
@@ -147,7 +147,6 @@ public class EEGReceiver : MonoBehaviour
             {
                 byte[] data = _udp.Receive(ref ep);
                 string json = Encoding.UTF8.GetString(data);
-                // Parseo manual — sin dependencias externas
                 lock (_lock)
                 {
                     _tFocus      = ParseFloat(json, "focus");
@@ -217,13 +216,13 @@ public class TileController : MonoBehaviour
 
     void Update()
     {
-        // Velocidad de tiles controlada por concentración del modelo
-        float speed = Mathf.Lerp(minSpeed, maxSpeed, eeg.focus);
+        // Velocidad de tiles controlada por concentración (DSP manual)
+        float speed = Mathf.Lerp(minSpeed, maxSpeed, eeg.engagement);
         MoveTiles(speed);
 
-        // Multiplicador de puntos por concentración sostenida (DSP manual)
-        float multiplier = eeg.engagement > 0.7f ? 2f : 1f;
-        ApplyMultiplier(multiplier);
+        // Parpadeo deliberado activa acción
+        if (eeg.focus > 0.5f)
+            TriggerAction();
     }
 }
 ```
@@ -243,6 +242,7 @@ Thread adquisición  →  fan-out  →  Queue manual  →  Thread manual  ─┐
 
 - Cada worker lee de su propia cola. Si un worker se atrasa, las muestras extras se descartan (`put_nowait`) — no bloquea la adquisición.
 - El sender duerme 250 ms entre envíos independientemente de cuándo actualicen los workers. Unity siempre recibe el valor más reciente disponible.
+- La IMU (accel + gyro) se actualiza en el thread de adquisición directamente — sin pasar por colas, cada muestra sobrescribe el valor anterior.
 
 ---
 
@@ -258,9 +258,12 @@ signal-processing/
 │   ├── pipeline.py              Orquestador + calibración
 │   └── realtime.py              RealtimeProcessor + stream_to_unity()
 └── model-finetuning/            ← Pipeline EEGNet
-    ├── calibrate.py             Sesión de grabación etiquetada
+    ├── calibrate_api.py         Sesión de grabación — API propietaria g.tec
+    ├── calibrate_generic.py     Sesión de grabación — SDK estándar UnicornPy
+    ├── dataset.py               EEGDataset con augmentation
+    ├── model.py                 build_model(), from_pretrained_hub(), freeze_backbone()
     ├── train.py                 Fine-tuning en dos fases
     └── predict.py               EEGClassifier + stream() standalone
 ```
 
-Cada sub-carpeta tiene su propio `README.md` con instrucciones detalladas de entrenamiento y uso independiente.
+Cada sub-carpeta tiene su propio `README.md` con instrucciones detalladas.

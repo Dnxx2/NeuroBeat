@@ -2,6 +2,8 @@
 
 Scripts para conectar el Unicorn Black vía BrainFlow, verificar la señal y visualizarla en tiempo real.
 
+> Estos scripts son para **verificación y exploración** del hardware. El pipeline de procesamiento que alimenta a Unity está en `signal-processing/stream.py`, que usa la API propietaria de g.tec (`api/Lib/UnicornPy`) en lugar de BrainFlow.
+
 ---
 
 ## Scripts
@@ -17,8 +19,7 @@ Scripts para conectar el Unicorn Black vía BrainFlow, verificar la señal y vis
 ## Install
 
 ```bash
-cd api
-pip install -r requirements.txt
+pip install -r requirements.txt   # desde la raíz del repo
 ```
 
 ---
@@ -40,7 +41,7 @@ Todos los scripts usan `params.serial_port`. Cambia el valor según tu sistema:
 Antes de cualquier otra cosa, corre el test de conexión con el Unicorn encendido y pareado:
 
 ```bash
-python connection_test.py
+python api/connection_test.py
 ```
 
 Salida esperada:
@@ -55,7 +56,7 @@ Frecuencia de muestreo esperada: 250 Hz
 ```
 
 - `1250 muestras` = 5 s × 250 Hz ✓
-- `shape (25, 1250)` = 25 canales (8 EEG + acelerómetro + giroscopio + contadores)
+- `shape (25, 1250)` = 25 canales BrainFlow (8 EEG + acelerómetro + giroscopio + contadores)
 - Si el número de muestras es 0 o hay error, revisar el puerto y que el Unicorn esté encendido
 
 ---
@@ -63,7 +64,7 @@ Frecuencia de muestreo esperada: 250 Hz
 ## Paso 2 — Ver señal cruda (matplotlib)
 
 ```bash
-python plot_raw.py
+python api/plot_raw.py
 ```
 
 Graba 5 s y abre una ventana con los 8 canales EEG (FZ, C3, CZ, C4, PZ, PO7, OZ, PO8). Útil para verificar que los electrodos hacen buen contacto antes de una sesión.
@@ -73,7 +74,7 @@ Graba 5 s y abre una ventana con los 8 canales EEG (FZ, C3, CZ, C4, PZ, PO7, OZ,
 ## Paso 3 — Osciloscopio en vivo
 
 ```bash
-python scope.py
+python api/scope.py
 ```
 
 Abre una ventana PyQtGraph con los 8 canales actualizándose a 30 fps. La señal se centra automáticamente (se resta la media) para que sea legible sin importar el offset de DC.
@@ -85,20 +86,16 @@ Abre una ventana PyQtGraph con los 8 canales actualizándose a 30 fps. La señal
 
 ## Relación con el resto del repo
 
-Estos scripts son para **verificación y exploración** del hardware. El pipeline de procesamiento en tiempo real que alimenta a Unity está en `signal-processing/`:
-
 ```
-api/scope.py          →  confirmar que la señal llega bien
-signal-processing/stream.py  →  procesar + clasificar + enviar a Unity
+api/scope.py               →  confirmar que la señal llega bien (BrainFlow)
+signal-processing/stream.py  →  procesar + clasificar + enviar a Unity (UnicornPy propietaria)
 ```
 
-El `scope.py` usa BrainFlow directamente. El `stream.py` usa UnicornPy (SDK nativo de g.tec) para compatibilidad con el pipeline de filtrado.
+El pipeline de calibración y entrenamiento (`signal-processing/model-finetuning/calibrate_api.py`) también usa la API propietaria, cuyo módulo está en `api/Lib/UnicornPy`.
 
 ---
 
 ## Canales del Unicorn Black
-
-Los canales EEG están en los índices devueltos por `BoardShim.get_eeg_channels(board_id)`:
 
 | Índice EEG | Nombre | Región |
 |------------|--------|--------|
@@ -110,3 +107,5 @@ Los canales EEG están en los índices devueltos por `BoardShim.get_eeg_channels
 | 5 | PO7 | Occipital izquierdo |
 | 6 | OZ | Occipital central |
 | 7 | PO8 | Occipital derecho |
+
+Frame completo (API propietaria, 17 canales float32): `[0:8]` EEG (µV) · `[8:11]` Accel (mg) · `[11:14]` Gyro (°/s) · `[14:17]` Battery/Counter/Validation.
