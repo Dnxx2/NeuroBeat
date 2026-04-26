@@ -3,6 +3,7 @@ using TMPro;
 using System.Collections;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
+using UnityEngine.EventSystems;
 
 public class JuegoRitmoUnificado : MonoBehaviour
 {
@@ -157,13 +158,21 @@ public class JuegoRitmoUnificado : MonoBehaviour
     {
         if (Pointer.current != null && Pointer.current.press.wasPressedThisFrame)
         {
+            // --- NUEVA LÓGICA DE BLOQUEO ---
+            // Si el clic es sobre un elemento de UI (como tu flecha), 
+            // salimos de la función para que el botón funcione normalmente.
+            if (EventSystem.current.IsPointerOverGameObject())
+            {
+                return; 
+            }
+
             if (juegoTerminado)
             {
+                // Solo reiniciamos si NO tocamos un botón y el juego terminó
                 if (puedeReiniciar) SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
                 return; 
             }
 
-            // MODIFICACIÓN: La estrella y el cálculo de golpes SOLO ocurren cuando es el turno del jugador
             if (esperandoInput)
             {
                 if (contenedorEfecto != null) MostrarEfectoEstrella();

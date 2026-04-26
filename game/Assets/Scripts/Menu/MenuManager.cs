@@ -17,6 +17,12 @@ public class MenuManager : MonoBehaviour
     {
         SceneManager.LoadScene("Ritmo");
     }
+
+    public void IrAGrabaciones()
+    {
+        SceneManager.LoadScene("Grabaciones");
+    }
+
     public void RegresarAlMenu()
     {
         SceneManager.LoadScene("Menu");
