@@ -19,25 +19,23 @@ From **Menu** you navigate to the three main modes (Drums → TamborMelodia, Pia
 
 ## EEG integration
 
-> **Status:** `EEGReceiver.cs`, `EEGMouseClicker.cs`, and `EEGReceiverMock.cs` are currently commented out in the codebase. The EEG-to-Unity input layer is implemented but disabled — re-enable by uncommenting the class bodies and wiring them as described below.
-
 ### `EEGReceiver.cs` — data reception
 
 Listens to the UDP packet from `stream.py` on port **5005** on a background thread. Exposes all values as public fields, updated in `Update()` (thread-safe).
 
-### `EEGMouseClicker.cs` — blink trigger
+### `EEGMouseClicker.cs` — blink trigger (`EEGBlinkTrigger` class)
 
-Detects a deliberate blink when `focus >= 0.95` and fires a configurable `UnityEvent` from the Inspector. Fires once per transition (does not repeat while focus stays high).
+Detects a deliberate blink when `focus >= 0.7` and fires a configurable `UnityEvent` from the Inspector. Fires once per transition (does not repeat while focus stays high).
 
 ```
-EEGReceiver.focus >= 0.95  →  EEGMouseClicker  →  UnityEvent (action configured in Inspector)
+EEGReceiver.focus >= 0.7  →  EEGBlinkTrigger  →  UnityEvent (action configured in Inspector)
 ```
 
 Typical use: confirm menu selection, activate a special ability, trigger a one-shot action.
 
 ### `EEGReceiverMock.cs` — testing without hardware
 
-Simulates `focus = 1.0` while the mouse button is held and `focus = 0.0` otherwise. Allows testing blink detection logic without connecting the Unicorn.
+Currently commented out. Simulates `focus = 1.0` while the mouse button is held and `focus = 0.0` otherwise. Re-enable by uncommenting the class body.
 
 ---
 
@@ -47,7 +45,7 @@ Simulates `focus = 1.0` while the mouse button is held and `focus = 0.0` otherwi
 
 | Field | Range | Source | Current use |
 |-------|-------|--------|-------------|
-| `focus` | 0–1 | EEGNet | Blink probability; saturated to 1.0 when > 0.7 — trigger via `EEGMouseClicker` (threshold 0.95) |
+| `focus` | 0–1 | EEGNet | Blink probability; saturated to 1.0 when > 0.7 — trigger via `EEGBlinkTrigger` (threshold 0.7) |
 | `engagement` | 0–1 | DSP (β/α+β) | Available; not connected to active mechanics |
 | `alpha` | 0–1 | DSP (normalized) | Available |
 | `beta` | 0–1 | DSP (normalized) | Available |
@@ -75,8 +73,8 @@ Simulates `focus = 1.0` while the mouse button is held and `focus = 0.0` otherwi
 ## EEG scene setup
 
 1. Create an empty **GameObject** → rename it `EEGReceiver`
-2. Uncomment the class body in `EEGReceiver.cs` and add it as a component
-3. For blink detection: uncomment `EEGMouseClicker.cs`, add it to a GameObject, assign the `EEGReceiver` reference, and wire the `UnityEvent` in the Inspector
+2. Add `EEGReceiver.cs` as a component
+3. For blink detection: add `EEGMouseClicker.cs` (`EEGBlinkTrigger` class) to a GameObject, assign the `EEGReceiver` reference, and wire the `UnityEvent` in the Inspector
 4. For development without hardware: uncomment `EEGReceiverMock.cs` and use it instead of `EEGReceiver.cs`
 
 ---
@@ -111,8 +109,8 @@ Scenes registered in `EditorBuildSettings.asset`: Menu, Piano, Ritmo, Tambor, an
 ```
 Assets/Scripts/
 ├── Data_Receiver/
-│   ├── EEGReceiver.cs              receives UDP packet from stream.py  [currently commented out]
-│   ├── EEGMouseClicker.cs          fires UnityEvent on blink detection (focus >= 0.95)  [currently commented out]
+│   ├── EEGReceiver.cs              receives UDP packet from stream.py
+│   ├── EEGMouseClicker.cs          EEGBlinkTrigger — fires UnityEvent on blink detection (focus >= 0.7)
 │   └── EEGReceiverMock.cs          mock for development without hardware  [currently commented out]
 ├── AdministradorEscenas.cs         generic scene loader: IrAEscena(string nombreEscena)
 ├── Menu_Principal/
