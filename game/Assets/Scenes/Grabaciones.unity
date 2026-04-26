@@ -1413,6 +1413,7 @@ CanvasRenderer:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
+<<<<<<< Updated upstream:game/Assets/Scenes/Grabaciones.unity
   - {fileID: 426497838}
   - {fileID: 1937930717}
   - {fileID: 1828089030}

@@ -172,7 +172,7 @@ public class JuegoRitmoUnificado : MonoBehaviour
         }
     }
 
-    void RegistrarGolpe()
+    public void RegistrarGolpe()
     {
         float tiempoPresionado = Time.time;
         float menorDiferencia = float.MaxValue;
