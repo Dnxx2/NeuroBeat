@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using System.IO;
+using System; // Necesario para DateTime
 
 public class Grabadora : MonoBehaviour
 {
@@ -13,14 +14,29 @@ public class Grabadora : MonoBehaviour
     [Header("Referencias")]
     public AudioSource altavozPrincipal;
 
+    public static Grabadora instancia;
+
+    void Awake()
+    {
+        // Si ya existe una grabadora, destruye esta para que no haya duplicados
+        if (instancia == null)
+        {
+            instancia = this;
+            DontDestroyOnLoad(gameObject); // Esto la hace persistente entre escenas
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+
     void Start()
     {
-        // Se sincroniza con la frecuencia de tu tarjeta de sonido
         frecuencia = AudioSettings.outputSampleRate;
 
         if (altavozPrincipal != null)
         {
-            altavozPrincipal.Play(); // Activa el flujo de datos
+            altavozPrincipal.Play(); 
         }
     }
 
@@ -29,11 +45,8 @@ public class Grabadora : MonoBehaviour
         if (estaGrabando)
         {
             this.canales = channels;
-
             for (int i = 0; i < data.Length; i++)
             {
-                // ATENUACIÓN: Multiplicamos por 0.7f para que los sonidos
-                // mezclados no saturen el archivo final.
                 bufferDeGrabacion.Add(data[i] * 0.7f);
             }
         }
@@ -41,9 +54,9 @@ public class Grabadora : MonoBehaviour
 
     public void EmpezarGrabacion()
     {
-        Debug.Log(">>> GRABANDO... Presiona tus botones ahora.");
         bufferDeGrabacion.Clear();
         estaGrabando = true;
+        Debug.Log(">>> GRABANDO...");
     }
 
     public void PararGrabacion()
@@ -55,25 +68,32 @@ public class Grabadora : MonoBehaviour
         {
             GenerarYGuardar();
         }
-        else
-        {
-            Debug.LogWarning("No se capturó audio. ¿El script está en la cámara?");
-        }
     }
 
     private void GenerarYGuardar()
     {
         int muestrasPorCanal = bufferDeGrabacion.Count / canales;
-
         AudioClip clipFinal = AudioClip.Create("SecuenciaFinal", muestrasPorCanal, canales, frecuencia, false);
         clipFinal.SetData(bufferDeGrabacion.ToArray(), 0);
 
-        // Ruta: Escritorio del usuario actual
-        string escritorio = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop);
-        string rutaFinal = Path.Combine(escritorio, "MiGrabacion_Limpia.wav");
+        // 1. Definir la ruta local (Carpeta raíz del proyecto / Grabaciones)
+        string rutaBase = Directory.GetParent(Application.dataPath).FullName;
+        string carpetaGrabaciones = Path.Combine(rutaBase, "Grabaciones");
+
+        // 2. Crear la carpeta si no existe
+        if (!Directory.Exists(carpetaGrabaciones))
+        {
+            Directory.CreateDirectory(carpetaGrabaciones);
+        }
+
+        // 3. Generar un nombre basado en la fecha y hora actual
+        // Formato: Grabacion_2024-05-20_14-30-05.wav
+        string nombreArchivo = "Grabacion_" + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".wav";
+        string rutaFinal = Path.Combine(carpetaGrabaciones, nombreArchivo);
         
+        // 4. Guardar usando SavWav
         SavWav.SaveAbsolute(rutaFinal, clipFinal);
 
-        Debug.Log(">>> ARCHIVO CREADO EXITOSAMENTE: " + rutaFinal);
+        Debug.Log(">>> GRABACIÓN GUARDADA EN: " + rutaFinal);
     }
 }
