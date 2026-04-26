@@ -232,19 +232,6 @@ public class JuegoRitmoUnificado : MonoBehaviour
             textoPuntuacion.fontSize = 60; 
             textoPuntuacion.text = $"FIN DEL JUEGO\n<size=80>{scoreFinal:F0}%</size>";
         }
-
-        StartCoroutine(HabilitarReinicio());
-    }
-
-    IEnumerator HabilitarReinicio()
-    {
-        yield return new WaitForSeconds(2f); 
-        puedeReiniciar = true; 
-
-        if (textoPuntuacion != null)
-        {
-            textoPuntuacion.text += "\n<size=30>CLIC para reiniciar</size>";
-        }
     }
 
     // --- HERRAMIENTA NUEVA: Alineación Dinámica de UI ---
