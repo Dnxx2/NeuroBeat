@@ -10,7 +10,7 @@ NeuroBeat translates raw EEG signals into game inputs. The player controls a Uni
 
 ```
 NeuroBeat/
-├── api/                    # Hardware verification scripts (BrainFlow)
+├── api/                    # Hardware verification scripts (BrainFlow or Propietary Unicorn PythonAPI)
 ├── control/                # OS-level control: mouse cursor (gyroscope) + click (EEG focus)
 ├── game/                   # Unity game — receives EEG commands via UDP
 └── signal-processing/      # EEG signal cleaning, classification, and unified UDP stream
