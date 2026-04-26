@@ -1,28 +1,28 @@
-# Instala todo el repo de una sola vez:
+# Install everything in one shot:
 #   pip install -r requirements.txt
 #
-# Alternativa por subcarpeta (solo lo que necesitas):
+# Or per subfolder (only what you need):
 #   pip install -r api/requirements.txt
 #   pip install -r signal-processing/manual-filtering/requirements.txt
 #   pip install -r signal-processing/model-finetuning/requirements.txt
 
-# ── Adquisición y hardware (api/, control/) ───────────────────────────────────
+# ── Acquisition and hardware (api/, control/) ─────────────────────────────────
 brainflow>=5.12
 pyautogui>=0.9.54
 
-# ── Visualización (api/) ──────────────────────────────────────────────────────
+# ── Visualization (api/) ──────────────────────────────────────────────────────
 matplotlib>=3.8
 PyQt6>=6.6
 pyqtgraph>=0.13
 
-# ── Procesamiento de señal (signal-processing/manual-filtering/) ──────────────
+# ── Signal processing (signal-processing/manual-filtering/) ──────────────────
 mne>=1.7
 scipy>=1.12
 
-# ── Modelo EEGNet (signal-processing/model-finetuning/) ──────────────────────
+# ── EEGNet model (signal-processing/model-finetuning/) ───────────────────────
 braindecode[hub]>=0.8
 torch>=2.2
 
-# ── Común a todo ──────────────────────────────────────────────────────────────
+# ── Common ────────────────────────────────────────────────────────────────────
 numpy>=1.26
 scikit-learn>=1.4
