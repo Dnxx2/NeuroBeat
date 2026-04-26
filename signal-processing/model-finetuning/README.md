@@ -1,150 +1,150 @@
 # Model Fine-Tuning Pipeline
 
-Fine-tuning de **EEGNet** sobre datos del sujeto de prueba.
+Fine-tuning **EEGNet** on test subject data.
 
-> **Para enviar a Unity junto con el pipeline manual** usa `../stream.py` — corre ambos en paralelo y manda un solo paquete UDP con todos los valores.
-> Este README cubre el entrenamiento y uso **standalone** del modelo.
+> **To send to Unity alongside the manual pipeline** use `../stream.py` — it runs both in parallel and sends a single UDP packet with all values.
+> This README covers training and **standalone** use of the model.
 
-**Output `focus_score()`:** `float 0.0–1.0` — probabilidad de estado FOCUS.
-**Output `stream()`:** JSON por UDP `{"focus": 0.73}` cada ~250 ms.
+**`focus_score()` output:** `float 0.0–1.0` — raw model output for the FOCUS class.
+**`stream()` output:** JSON over UDP `{"focus": 0.73}` every ~250 ms.
 
 ---
 
-## Cómo funciona
+## How it works
 
-### El modelo — EEGNet
+### The model — EEGNet
 
-EEGNet es una CNN compacta diseñada para BCI con pocos datos. Tiene dos bloques:
+EEGNet is a compact CNN designed for BCI with limited data. It has two blocks:
 
-1. **Depthwise temporal convolution** — aprende filtros de frecuencia del EEG (equivalente al bandpass del pipeline manual, pero aprendido de datos reales)
-2. **Separable spatial convolution** — aprende qué combinación de los 8 canales maximiza la separabilidad entre clases
+1. **Depthwise temporal convolution** — learns EEG frequency filters (equivalent to the manual bandpass, but learned from real data)
+2. **Separable spatial convolution** — learns which combination of the 8 channels maximizes class separability
 
-El modelo se inicializa con pesos aleatorios y se entrena desde cero sobre los datos de calibración del sujeto. `from_pretrained_hub()` en `model.py` existe como utilidad para cargar pesos pre-entrenados de Hugging Face (`PierreGtch/EEGNetv4`, `EEGNetv4_Lee2019_MI/model-params.pkl`), pero no es el flujo por defecto — el flujo estándar usa `build_model()` directamente.
+The model is initialized with random weights and trained from scratch on the subject's calibration data. `from_pretrained_hub()` in `model.py` exists as a utility for loading pre-trained weights from Hugging Face (`PierreGtch/EEGNetv4`, `EEGNetv4_Lee2019_MI/model-params.pkl`), but it is not the default workflow — the standard flow calls `build_model()` directly.
 
-### Fine-tuning en dos fases
+### Two-phase training
 
-Con solo 2 minutos de datos, el entrenamiento se divide en dos fases:
+With only 2 minutes of data, training is split into two phases:
 
-**Fase 1 — backbone congelado (10 epochs, LR=1e-3)**
-Solo el clasificador final entrena. Converge rápido porque es un problema casi lineal.
+**Phase 1 — frozen backbone (10 epochs, LR=1e-3)**
+Only the final classifier trains. Converges quickly because it is nearly a linear problem.
 
-**Fase 2 — todas las capas (20 epochs, LR=1e-4)**
-Con el clasificador orientado, se descongelan todas las capas con LR 10× más bajo. Los filtros espaciales se ajustan al sujeto sin destruir lo aprendido en fase 1.
+**Phase 2 — all layers (20 epochs, LR=1e-4)**
+With the classifier oriented, all layers are unfrozen at 10× lower LR. Spatial filters adapt to the subject without destroying what was learned in phase 1.
 
-### Inferencia — focus score e inversión de parpadeo
+### Inference — focus score and blink inversion
 
-`focus_score()` devuelve `predict_proba()[1]` — probabilidad de FOCUS.
+`focus_score()` returns `predict_proba()[1]` — the FOCUS class probability.
 
-En `stream.py`, la salida del modelo se invierte y se envía como `focus`:
+In `stream.py`, the model output is inverted before sending as `focus`:
 ```python
-prob_parpadeo = 1.0 - raw_score      # invierte la salida del modelo
+prob_parpadeo = 1.0 - raw_score      # invert model output
 if prob_parpadeo > 0.7:
-    score_filtrado = 1.0             # blink detectado con alta confianza
+    score_filtrado = 1.0             # blink detected with high confidence
 else:
-    score_filtrado = prob_parpadeo   # valor continuo 0–0.7
+    score_filtrado = prob_parpadeo   # continuous value 0–0.7
 ```
-`focus` es un float 0–1. Valores ≥ 0.7 se saturan a 1.0 (parpadeo detectado con certeza). Por debajo de 0.7 el valor es continuo. Unity usa `EEGMouseClicker` con umbral 0.95 para disparar acciones solo cuando `focus = 1.0`.
+`focus` is a float 0–1. Values ≥ 0.7 are saturated to 1.0 (blink detected with certainty). Below 0.7 the value is continuous. Unity uses `EEGMouseClicker` with threshold 0.95 to fire actions only when `focus = 1.0`.
 
 ### Data augmentation
 
-Con ~2 minutos de datos el dataset es pequeño. Durante el entrenamiento cada epoch pasa por:
-- **Ruido gaussiano leve** (σ = 0.5 µV) — variabilidad natural de la señal
-- **Shift temporal aleatorio** (±100 ms) — invariancia a variaciones de timing
+With ~2 minutes of data the dataset is small. Each epoch passes through:
+- **Light Gaussian noise** (σ = 0.5 µV) — natural signal variability
+- **Random time shift** (±100 ms) — invariance to small timing variations
 
 ---
 
-## Flujo completo: de cero a tiempo real
+## Full workflow: from zero to real time
 
 ```
-[1] pip install -r requirements.txt   (desde la raíz del repo)
-[2] python calibrate_api.py     →  graba 2 min con el Unicorn (API propietaria g.tec)
-    python calibrate_generic.py →  alternativa con SDK estándar de UnicornPy
-[3] python train.py             →  fine-tune + guarda modelo como models/calibrated.pt
+[1] pip install -r requirements.txt   (from repo root)
+[2] python calibrate_api.py     →  record 2 min with the Unicorn (proprietary g.tec API)
+    python calibrate_generic.py →  alternative with standard UnicornPy SDK
+[3] python train.py             →  train + save model as models/calibrated.pt
 [4] cd .. && python stream.py --model model-finetuning/models/calibrated.pt
 ```
 
 ---
 
-## Paso 1 — Instalar
+## Step 1 — Install
 
 ```bash
-pip install -r requirements.txt   # desde la raíz del repo
+pip install -r requirements.txt   # from repo root
 ```
 
 ---
 
-## Paso 2 — Grabar calibración
+## Step 2 — Record calibration
 
-Hay dos scripts de calibración según la API disponible:
+Two calibration scripts are available depending on which API is installed:
 
-| Script | API usada | Cuándo usarlo |
-|--------|-----------|---------------|
-| `calibrate_api.py` | UnicornPy propietaria (`api/Lib`) | Hardware g.tec con SDK completo |
-| `calibrate_generic.py` | UnicornPy SDK estándar | Instalación estándar de UnicornPy |
+| Script | API | When to use |
+|--------|-----|-------------|
+| `calibrate_api.py` | Proprietary UnicornPy (`api/Lib`) | g.tec hardware with full SDK |
+| `calibrate_generic.py` | Standard UnicornPy SDK | Standard UnicornPy installation |
 
 ```bash
-# Con el Unicorn Black conectado (API propietaria — recomendado)
+# With Unicorn Black connected (proprietary API — recommended)
 python calibrate_api.py --output data/calibration.npz
 
-# Con SDK estándar
+# With standard SDK
 python calibrate_generic.py --output data/calibration.npz
 
-# Sin hardware (señal aleatoria — para probar el pipeline)
+# Without hardware (random signal — for testing the pipeline)
 python calibrate_api.py --output data/calibration.npz --mock
 ```
 
-El script hace esto:
-1. Muestra instrucciones en pantalla
-2. Graba 30 s × 2 clases × 2 rondas = **2 minutos totales**
-   - Clase 0 — RELAX: "Mantén los ojos abiertos"
-   - Clase 1 — FOCUS: "Parpadea durante 30 segundos"
-3. Divide cada grabación en ventanas de 2 s con 50% de solapamiento
-4. Guarda `data/calibration.npz` con arrays `epochs (n, 500, 1)` y `labels (n,)`
+The script does:
+1. Displays on-screen cues
+2. Records 30 s × 2 classes × 2 rounds = **2 minutes total**
+   - Class 0 — RELAX: "Keep your eyes open"
+   - Class 1 — FOCUS: "Blink for 30 seconds"
+3. Splits each recording into 2 s windows with 50% overlap
+4. Saves `data/calibration.npz` with arrays `epochs (n, 500, 1)` and `labels (n,)`
 
-> **Nota:** El directorio `data/` se crea automáticamente si no existe.
+> **Note:** The `data/` directory is created automatically if it does not exist.
 
-Los `.npz` están en `.gitignore`. Verificar que se grabó bien:
+`.npz` files are in `.gitignore`. Verify a good recording:
 ```python
 import numpy as np
 d = np.load('data/calibration.npz')
-print(d['epochs'].shape)   # ej. (240, 500, 1)
+print(d['epochs'].shape)   # e.g. (240, 500, 1)
 print(d['labels'])          # [0,0,...,1,1,...]  0=RELAX, 1=FOCUS
 ```
 
 ---
 
-## Paso 3 — Entrenar
+## Step 3 — Train
 
 ```bash
-# Desde la raíz del repo
+# From repo root
 python signal-processing/model-finetuning/train.py \
     --data signal-processing/model-finetuning/data/calibration.npz \
     --output signal-processing/model-finetuning/models/calibrated.pt
 ```
 
-O desde dentro de la carpeta:
+Or from inside the folder:
 ```bash
 cd signal-processing/model-finetuning
 python train.py --data data/calibration.npz --output models/calibrated.pt
 ```
 
-Salida esperada:
+Expected output:
 ```
-── Fase 1/30: backbone congelado ──
+── Phase 1/30: frozen backbone ──
 Epoch   1/30  val_acc=0.541
 Epoch   2/30  val_acc=0.623
-  -> checkpoint guardado  (mejor=0.623)
+  -> checkpoint saved  (best=0.623)
 ...
-── Fase 2/30: todas las capas, LR=1.0e-04 ──
+── Phase 2/30: all layers, LR=1.0e-04 ──
 Epoch  11/30  val_acc=0.741
-  -> checkpoint guardado  (mejor=0.741)
+  -> checkpoint saved  (best=0.741)
 ...
-Listo. Mejor val_acc: 0.821  →  models/calibrated.pt
+Done. Best val_acc: 0.821  →  models/calibrated.pt
 ```
 
-> **Nota:** El directorio `models/` se crea automáticamente si no existe.
+> **Note:** The `models/` directory is created automatically if it does not exist.
 
-Parámetros opcionales:
+Optional parameters:
 ```bash
 python train.py \
   --data data/calibration.npz \
@@ -157,67 +157,67 @@ python train.py \
 
 ---
 
-## Paso 4 — Streaming en tiempo real al juego
+## Step 4 — Real-time streaming to the game
 
-### Recomendado — stream combinado
+### Recommended — combined stream
 
 ```bash
 cd signal-processing
 python stream.py --model model-finetuning/models/calibrated.pt
 ```
 
-Este es el método recomendado: corre ambos pipelines (EEGNet + filtrado manual) en paralelo y envía un único paquete UDP con todos los valores.
+This is the recommended method: runs both pipelines (EEGNet + manual filtering) in parallel and sends a single UDP packet with all values.
 
-### Standalone — solo el modelo
+### Standalone — model only
 
 ```python
 from predict import EEGClassifier
 clf = EEGClassifier('models/calibrated.pt')
 
-# focus_score retorna float 0.0–1.0
+# focus_score returns float 0.0–1.0 (raw, before stream.py inversion)
 score = clf.focus_score(window_500x1)
 
-# Stream autónomo — envía {"focus": 0.73} por UDP cada ~250 ms
+# Autonomous stream — sends {"focus": 0.73} over UDP every ~250 ms
 clf.stream(get_sample, host='127.0.0.1', port=5005)
 ```
 
 ---
 
-## Referencia de módulos
+## Module reference
 
-| Archivo | Responsabilidad |
-|---------|----------------|
-| `calibrate_api.py` | Sesión guiada 2 min → `.npz` — usa API propietaria g.tec (`api/Lib`) |
-| `calibrate_generic.py` | Sesión guiada 2 min → `.npz` — usa SDK estándar de UnicornPy |
-| `dataset.py` | `torch.Dataset` + augmentation (ruido + time shift) |
+| File | Responsibility |
+|------|---------------|
+| `calibrate_api.py` | Guided 2-min session → `.npz` — uses proprietary g.tec API (`api/Lib`) |
+| `calibrate_generic.py` | Guided 2-min session → `.npz` — uses standard UnicornPy SDK |
+| `dataset.py` | `torch.Dataset` + augmentation (noise + time shift) |
 | `model.py` | EEGNet, `build_model()`, `from_pretrained_hub()`, `freeze_backbone()` |
-| `train.py` | Fine-tuning en dos fases, checkpoint por mejor val_acc |
+| `train.py` | Two-phase fine-tuning, checkpoint on best val_acc |
 | `predict.py` | `focus_score()` → float, `stream()` → UDP loop |
 
 ---
 
-## Archivos de datos y modelos
+## Data and model files
 
-Los archivos `.npz` (datos) y `.pt` (pesos) están en `.gitignore`. Estructuras esperadas:
+`.npz` (data) and `.pt` (weights) files are in `.gitignore`. Expected structure:
 
 ```
 signal-processing/model-finetuning/
 ├── data/
-│   └── calibration.npz     ← generado por calibrate_api.py / calibrate_generic.py
+│   └── calibration.npz     ← generated by calibrate_api.py / calibrate_generic.py
 └── models/
-    └── calibrated.pt       ← generado por train.py
+    └── calibrated.pt       ← generated by train.py
 ```
 
 ---
 
-## Cargar pesos pre-entrenados de Hugging Face (opcional)
+## Loading pre-trained Hugging Face weights (optional)
 
-Si quieres partir desde pesos pre-entrenados en lugar de inicialización aleatoria:
+To start from pre-trained weights instead of random initialization:
 
 ```python
 from model import from_pretrained_hub
 model = from_pretrained_hub(n_classes=2)
-# Pesos: PierreGtch/EEGNetv4 → EEGNetv4_Lee2019_MI/model-params.pkl
+# Weights: PierreGtch/EEGNetv4 → EEGNetv4_Lee2019_MI/model-params.pkl
 ```
 
-Luego pasa el modelo a `train()` o guárdalo como punto de partida para el fine-tuning.
+Then pass the model to `train()` or save it as a starting point for fine-tuning.

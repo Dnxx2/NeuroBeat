@@ -1,111 +1,111 @@
-# Adquisición de Datos — Unicorn Black
+# Data Acquisition — Unicorn Black
 
-Scripts para conectar el Unicorn Black vía BrainFlow, verificar la señal y visualizarla en tiempo real.
+Scripts for connecting the Unicorn Black via BrainFlow, verifying the signal, and visualizing it in real time.
 
-> Estos scripts son para **verificación y exploración** del hardware. El pipeline de procesamiento que alimenta a Unity está en `signal-processing/stream.py`, que usa la API propietaria de g.tec (`api/Lib/UnicornPy`) en lugar de BrainFlow.
+> These scripts are for **hardware verification and exploration**. The processing pipeline that feeds Unity is in `signal-processing/stream.py`, which uses the proprietary g.tec API (`api/Lib/UnicornPy`) instead of BrainFlow.
 
 ---
 
 ## Scripts
 
-| Archivo | Qué hace |
-|---------|----------|
-| `connection_test.py` | Conecta, graba 5 s y reporta cuántas muestras llegaron — primera prueba de que el hardware funciona |
-| `plot_raw.py` | Graba 5 s y grafica los 8 canales crudos con matplotlib |
-| `scope.py` | Osciloscopio en tiempo real — muestra los 8 canales en vivo con ventana deslizante de 5 s |
+| File | What it does |
+|------|-------------|
+| `connection_test.py` | Connects, records 5 s, and reports how many samples arrived — first check that the hardware works |
+| `plot_raw.py` | Records 5 s and plots the 8 raw EEG channels with matplotlib |
+| `scope.py` | Live oscilloscope — shows all 8 channels updating at 30 fps with a 5 s sliding window |
 
 ---
 
 ## Install
 
 ```bash
-pip install -r requirements.txt   # desde la raíz del repo
+pip install -r requirements.txt   # from repo root
 ```
 
 ---
 
-## Configuración del puerto serie
+## Serial port configuration
 
-Todos los scripts usan `params.serial_port`. Cambia el valor según tu sistema:
+All scripts use `params.serial_port`. Change the value for your system:
 
-| Sistema | Ejemplo |
-|---------|---------|
-| Windows | `COM5` (verifica en Administrador de dispositivos) |
+| OS | Example |
+|----|---------|
+| Windows | `COM5` (check in Device Manager) |
 | Linux | `/dev/ttyUSB0` |
 | macOS | `/dev/tty.usbserial-XXXX` |
 
 ---
 
-## Paso 1 — Verificar conexión
+## Step 1 — Verify connection
 
-Antes de cualquier otra cosa, corre el test de conexión con el Unicorn encendido y pareado:
+Before anything else, run the connection test with the Unicorn powered on and paired:
 
 ```bash
 python api/connection_test.py
 ```
 
-Salida esperada:
+Expected output:
 ```
---- Intentando conexión ---
-¡CONECTADO CON ÉXITO!
-Recibiendo datos durante 5 segundos...
---- RESULTADO ---
-Muestras recibidas: 1250
-Shape completo: (25, 1250)
-Frecuencia de muestreo esperada: 250 Hz
+--- Attempting connection ---
+CONNECTION SUCCESSFUL!
+Receiving data for 5 seconds...
+--- RESULT ---
+Samples received: 1250
+Full shape: (25, 1250)
+Expected sampling rate: 250 Hz
 ```
 
-- `1250 muestras` = 5 s × 250 Hz ✓
-- `shape (25, 1250)` = 25 canales BrainFlow (8 EEG + acelerómetro + giroscopio + contadores)
-- Si el número de muestras es 0 o hay error, revisar el puerto y que el Unicorn esté encendido
+- `1250 samples` = 5 s × 250 Hz ✓
+- `shape (25, 1250)` = 25 BrainFlow channels (8 EEG + accelerometer + gyroscope + counters)
+- If sample count is 0 or an error occurs, check the port and that the Unicorn is powered on
 
 ---
 
-## Paso 2 — Ver señal cruda (matplotlib)
+## Step 2 — View raw signal (matplotlib)
 
 ```bash
 python api/plot_raw.py
 ```
 
-Graba 5 s y abre una ventana con los 8 canales EEG (FZ, C3, CZ, C4, PZ, PO7, OZ, PO8). Útil para verificar que los electrodos hacen buen contacto antes de una sesión.
+Records 5 s and opens a window with the 8 EEG channels (FZ, C3, CZ, C4, PZ, PO7, OZ, PO8). Useful for verifying good electrode contact before a session.
 
 ---
 
-## Paso 3 — Osciloscopio en vivo
+## Step 3 — Live oscilloscope
 
 ```bash
 python api/scope.py
 ```
 
-Abre una ventana PyQtGraph con los 8 canales actualizándose a 30 fps. La señal se centra automáticamente (se resta la media) para que sea legible sin importar el offset de DC.
+Opens a PyQtGraph window with all 8 channels updating at 30 fps. The signal is automatically centered (mean subtracted) so it is readable regardless of DC offset.
 
-- Línea verde neón, los últimos 5 s por canal
-- Cerrar la ventana o Ctrl+C para salir (el puerto se libera en el `finally`)
-
----
-
-## Relación con el resto del repo
-
-```
-api/scope.py               →  confirmar que la señal llega bien (BrainFlow)
-signal-processing/stream.py  →  procesar + clasificar + enviar a Unity (UnicornPy propietaria)
-```
-
-El pipeline de calibración y entrenamiento (`signal-processing/model-finetuning/calibrate_api.py`) también usa la API propietaria, cuyo módulo está en `api/Lib/UnicornPy`.
+- Neon green trace, last 5 s per channel
+- Close the window or Ctrl+C to exit (port is released in `finally`)
 
 ---
 
-## Canales del Unicorn Black
+## Relation to the rest of the repo
 
-| Índice EEG | Nombre | Región |
-|------------|--------|--------|
+```
+api/scope.py                 →  confirm signal is arriving correctly (BrainFlow)
+signal-processing/stream.py  →  process + classify + send to Unity (proprietary UnicornPy)
+```
+
+The calibration and training pipeline (`signal-processing/model-finetuning/calibrate_api.py`) also uses the proprietary API, whose module is at `api/Lib/UnicornPy`.
+
+---
+
+## Unicorn Black channels
+
+| EEG Index | Name | Region |
+|-----------|------|--------|
 | 0 | FZ | Frontal central |
-| 1 | C3 | Motor izquierdo |
-| 2 | CZ | Motor central |
-| 3 | C4 | Motor derecho |
+| 1 | C3 | Left motor |
+| 2 | CZ | Central motor |
+| 3 | C4 | Right motor |
 | 4 | PZ | Parietal |
-| 5 | PO7 | Occipital izquierdo |
-| 6 | OZ | Occipital central |
-| 7 | PO8 | Occipital derecho |
+| 5 | PO7 | Left occipital |
+| 6 | OZ | Central occipital |
+| 7 | PO8 | Right occipital |
 
-Frame completo (API propietaria, 17 canales float32): `[0:8]` EEG (µV) · `[8:11]` Accel (mg) · `[11:14]` Gyro (°/s) · `[14:17]` Battery/Counter/Validation.
+Full frame (proprietary API, 17 float32 channels): `[0:8]` EEG (µV) · `[8:11]` Accel (mg) · `[11:14]` Gyro (°/s) · `[14:17]` Battery/Counter/Validation.

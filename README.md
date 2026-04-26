@@ -26,14 +26,14 @@ NeuroBeat/
 
 ## Signal Processing — quick summary
 
-| Sub-pipeline | Qué hace | Salida |
+| Sub-pipeline | What it does | Output |
 |---|---|---|
-| `manual-filtering/` | Notch → Bandpass → ICA → bandpower α/β/θ | Scores normalizados 0–1 |
-| `model-finetuning/` | EEGNet entrenado para detectar parpadeos deliberados | `focus` float 0–1 (saturado a 1.0 al detectar parpadeo) |
+| `manual-filtering/` | Notch → Bandpass → ICA → bandpower α/β/θ | Normalized scores 0–1 |
+| `model-finetuning/` | EEGNet trained to detect deliberate blinks | `focus` float 0–1 (saturated to 1.0 on blink detection) |
 
-## UDP Stream — formato unificado
+## UDP Stream — unified format
 
-`signal-processing/stream.py` emite un JSON en **UDP:5005** cada ~250 ms:
+`signal-processing/stream.py` broadcasts a JSON on **UDP:5005** every ~250 ms:
 
 ```json
 {
@@ -43,37 +43,37 @@ NeuroBeat/
 }
 ```
 
-El campo `focus` es un float 0–1: sube con la probabilidad de parpadeo deliberado y se satura a 1.0 cuando supera 0.7. Unity lo usa vía `EEGMouseClicker.cs` (umbral 0.95) para disparar acciones solo cuando el parpadeo es detectado con alta certeza.
+`focus` is a float 0–1: rises with deliberate blink probability and saturates to 1.0 above 0.7. Unity consumes it via `EEGMouseClicker.cs` (threshold 0.95) to fire actions only when a blink is detected with high confidence.
 
-Múltiples consumidores pueden escuchar el mismo puerto (SO_REUSEADDR — todos reciben el mismo datagrama):
-- **Unity** `game/Assets/Scripts/Data_Receiver/EEGReceiver.cs` — input del juego (blink trigger, bandpower disponible)
-- **gyro_mouse** `control/gyro_mouse.py` — mueve el cursor con el giroscopio y hace click por blink
+Multiple consumers can bind to the same port (SO_REUSEADDR — all receive the same datagram):
+- **Unity** `game/Assets/Scripts/Data_Receiver/EEGReceiver.cs` — game input (blink trigger, bandpower available)
+- **gyro_mouse** `control/gyro_mouse.py` — moves OS cursor with gyroscope, clicks on blink
 
 ## Quick Start
 
 ```bash
-# 1. Instalar todo
+# 1. Install all dependencies
 pip install -r requirements.txt
 
-# 2. Calibrar sujeto (--mock = sin hardware)
+# 2. Calibrate subject (--mock = no hardware needed)
 python signal-processing/model-finetuning/calibrate_api.py \
     --output signal-processing/model-finetuning/data/calibration.npz --mock
 
-# 3. Entrenar modelo
+# 3. Train model
 python signal-processing/model-finetuning/train.py \
     --data signal-processing/model-finetuning/data/calibration.npz \
     --output signal-processing/model-finetuning/models/calibrated.pt
 
-# 4. Arrancar el streamer (Terminal 1) — --model es obligatorio
+# 4. Start the streamer (Terminal 1) — --model is required
 cd signal-processing
 python stream.py --model model-finetuning/models/calibrated.pt --mock
 
-# 5a. Abrir Unity y dar Play  →  game recibe señal por UDP
-# 5b. O controlar el mouse con la cabeza + concentración (Terminal 2)
+# 5a. Open Unity and press Play  →  game receives signal over UDP
+# 5b. Or control the mouse with your head + blinks (Terminal 2)
 python control/gyro_mouse.py --mock
 ```
 
-Ver el `README.md` dentro de cada carpeta para instrucciones detalladas.
+See the `README.md` in each subfolder for detailed instructions.
 
 ## License
 
