@@ -5,13 +5,13 @@ public class TamborLibre : MonoBehaviour
 {
     private AudioSource miAltavoz;
 
-    void Start()
+    public void Start()
     {
         // Buscamos el componente Audio Source al iniciar
         miAltavoz = GetComponent<AudioSource>();
     }
 
-    void Update()
+    public void Update()
     {
         if (Pointer.current != null && Pointer.current.press.wasPressedThisFrame)
         {
@@ -21,7 +21,7 @@ public class TamborLibre : MonoBehaviour
         }
     }
 
-    void ReproducirSonido()
+    public void ReproducirSonido()
     {
         if (miAltavoz != null)
         {
