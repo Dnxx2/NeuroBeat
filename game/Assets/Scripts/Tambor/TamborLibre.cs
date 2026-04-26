@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.EventSystems;
 
 public class TamborLibre : MonoBehaviour
 {
@@ -23,6 +24,14 @@ public class TamborLibre : MonoBehaviour
 
     public void ReproducirSonido()
     {
+        // Verificamos si el clic fue sobre un botón de la UI
+        if (EventSystem.current.IsPointerOverGameObject())
+        {
+            // Si el mouse está sobre un botón, entramos aquí y nos salimos
+            // sin reproducir el sonido.
+            return; 
+        }
+
         if (miAltavoz != null)
         {
             // Cambia el tono un poco hacia arriba o hacia abajo en cada clic
