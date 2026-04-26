@@ -1,12 +1,12 @@
 # Signal Processing
 
-Dos pipelines de EEG que corren en paralelo y envían sus salidas a Unity por UDP.
+Two EEG pipelines running in parallel, sending their outputs to Unity over UDP.
 
 ---
 
-## Paquete UDP — formato unificado
+## UDP Packet — unified format
 
-Puerto **5005**, un JSON cada **~250 ms**:
+Port **5005**, one JSON every **~250 ms**:
 
 ```json
 {
@@ -24,55 +24,55 @@ Puerto **5005**, un JSON cada **~250 ms**:
 }
 ```
 
-| Campo | Fuente | Rango | Qué representa |
-|-------|--------|-------|----------------|
-| `focus` | EEGNet (modelo) | 0–1 | Probabilidad de parpadeo deliberado; saturado a 1.0 cuando supera 0.7 |
-| `alpha` | DSP manual | 0–1 | Potencia alpha frontal normalizada (relajación) |
-| `beta` | DSP manual | 0–1 | Potencia beta frontal normalizada (concentración) |
-| `theta` | DSP manual | 0–1 | Potencia theta frontal normalizada (somnolencia) |
-| `engagement` | DSP manual | 0–1 | `beta / (alpha + beta)` — índice de concentración clásico |
-| `accel_x/y/z` | IMU pass-through | mg | Acelerómetro. En reposo: X≈0, Y≈0, Z≈1000 (1g) |
-| `gyro_x/y/z` | IMU pass-through | °/s | Giroscopio. En reposo ≈ 0 |
+| Field | Source | Range | Description |
+|-------|--------|-------|-------------|
+| `focus` | EEGNet (model) | 0–1 | Blink probability; saturated to 1.0 when above 0.7 |
+| `alpha` | Manual DSP | 0–1 | Normalized frontal alpha power (relaxation) |
+| `beta` | Manual DSP | 0–1 | Normalized frontal beta power (concentration) |
+| `theta` | Manual DSP | 0–1 | Normalized frontal theta power (drowsiness) |
+| `engagement` | Manual DSP | 0–1 | `beta / (alpha + beta)` — classical concentration index |
+| `accel_x/y/z` | IMU pass-through | mg | Accelerometer. At rest: X≈0, Y≈0, Z≈1000 (1g) |
+| `gyro_x/y/z` | IMU pass-through | °/s | Gyroscope. At rest ≈ 0 |
 
-`alpha + beta + theta ≈ 1.0` (proporciones relativas). Los valores IMU son físicos sin normalizar.
+`alpha + beta + theta ≈ 1.0` (relative proportions). IMU values are physical units, unfiltered.
 
-> **Nota sobre el frame del Unicorn Black:** 17 canales totales: `[0:8]` EEG, `[8:11]` acelerómetro, `[11:14]` giroscopio, `[14:17]` battery/counter/validation. Los electrodos REF y GND son hardware para referencia diferencial — no generan canales de datos separados.
+> **Unicorn Black frame:** 17 channels total: `[0:8]` EEG, `[8:11]` accelerometer, `[11:14]` gyroscope, `[14:17]` battery/counter/validation. REF and GND electrodes are hardware only — no separate data channels.
 
 ---
 
-## Uso — stream combinado (recomendado)
+## Usage — combined stream (recommended)
 
-`--model` es **obligatorio**. Apunta al `.pt` que generó `train.py`.
+`--model` is **required**. Points to the `.pt` file produced by `train.py`.
 
 ```bash
 cd signal-processing
 
-# Con hardware
+# With hardware
 python stream.py --model model-finetuning/models/calibrated.pt
 
-# Con calibración del clasificador manual
+# With manual classifier calibration
 python stream.py --model model-finetuning/models/calibrated.pt \
                  --calibration manual-filtering/calibration.npz
 
-# Sin hardware (señal sintética para probar Unity)
+# Without hardware (synthetic signal for testing Unity)
 python stream.py --model model-finetuning/models/calibrated.pt --mock
 ```
 
-Salida en terminal:
+Terminal output:
 ```
-Streaming → udp://127.0.0.1:5005  (Ctrl+C para detener)
+Streaming → udp://127.0.0.1:5005  (Ctrl+C to stop)
 
 focus=0.00 [░░░░░░░░░░░░░░░░░░░░] α=0.41 β=0.62 eng=0.60
 ```
 
 ---
 
-## Uso — pipelines independientes
+## Usage — standalone pipelines
 
-Si el equipo de juego quiere solo un pipeline mientras el otro se desarrolla:
+If the game team needs only one pipeline while the other is being developed:
 
 ```bash
-# Solo el modelo (foco puro)
+# Model only (blink detection)
 cd signal-processing/model-finetuning
 python -c "
 from predict import EEGClassifier
@@ -80,7 +80,7 @@ clf = EEGClassifier('models/calibrated.pt')
 clf.stream(get_sample, port=5005)
 "
 
-# Solo el filtrado manual (bandpower)
+# Manual filtering only (bandpower)
 cd signal-processing/manual-filtering
 python -c "
 from realtime import RealtimeProcessor
@@ -91,9 +91,9 @@ proc.stream_to_unity(get_sample, port=5006)
 
 ---
 
-## Unity — receptor C#
+## Unity — C# receiver
 
-Pegar este script en un `GameObject` vacío llamado `EEGReceiver`:
+Attach this script to an empty `GameObject` named `EEGReceiver`:
 
 ```csharp
 using System.Net;
@@ -104,17 +104,17 @@ using UnityEngine;
 
 public class EEGReceiver : MonoBehaviour
 {
-    [Header("Valores EEG — actualizados cada ~250 ms")]
-    public float focus      = 0f;   // 0-1, parpadeo deliberado
-    public float alpha      = 0f;   // 0-1, relajación
-    public float beta       = 0f;   // 0-1, concentración
-    public float theta      = 0f;   // 0-1, somnolencia
+    [Header("EEG values — updated every ~250 ms")]
+    public float focus      = 0f;   // 0-1, deliberate blink
+    public float alpha      = 0f;   // 0-1, relaxation
+    public float beta       = 0f;   // 0-1, concentration
+    public float theta      = 0f;   // 0-1, drowsiness
     public float engagement = 0f;   // 0-1, beta/(alpha+beta)
 
-    [Header("IMU — pass-through sin filtro")]
-    public float accelX = 0f;  // mg, en reposo ≈ 0
-    public float accelY = 0f;  // mg, en reposo ≈ 0
-    public float accelZ = 0f;  // mg, en reposo ≈ 1000
+    [Header("IMU — unfiltered pass-through")]
+    public float accelX = 0f;  // mg, at rest ≈ 0
+    public float accelY = 0f;  // mg, at rest ≈ 0
+    public float accelZ = 0f;  // mg, at rest ≈ 1000
     public float gyroX  = 0f;  // °/s
     public float gyroY  = 0f;  // °/s
     public float gyroZ  = 0f;  // °/s
@@ -162,7 +162,7 @@ public class EEGReceiver : MonoBehaviour
                     _tGyroZ      = ParseFloat(json, "gyro_z");
                 }
             }
-            catch { /* ignorar errores de red */ }
+            catch { /* ignore network errors */ }
         }
     }
 
@@ -205,7 +205,7 @@ public class EEGReceiver : MonoBehaviour
 }
 ```
 
-### Usarlo en el game loop
+### Using it in the game loop
 
 ```csharp
 public class TileController : MonoBehaviour
@@ -216,11 +216,11 @@ public class TileController : MonoBehaviour
 
     void Update()
     {
-        // Velocidad de tiles controlada por concentración (DSP manual)
+        // Tile speed driven by concentration (manual DSP)
         float speed = Mathf.Lerp(minSpeed, maxSpeed, eeg.engagement);
         MoveTiles(speed);
 
-        // Parpadeo deliberado activa acción
+        // Deliberate blink triggers action
         if (eeg.focus > 0.5f)
             TriggerAction();
     }
@@ -229,41 +229,41 @@ public class TileController : MonoBehaviour
 
 ---
 
-## Arquitectura interna de `stream.py`
+## `stream.py` internal architecture
 
 ```
-Thread adquisición  →  fan-out  →  Queue manual  →  Thread manual  ─┐
-                                →  Queue modelo  →  Thread modelo  ─┤
+Acquisition thread  →  fan-out  →  Queue manual  →  Manual thread  ─┐
+                                →  Queue model   →  Model thread   ─┤
                                                                      ↓
-                                              results dict (con lock)
+                                                  results dict (with lock)
                                                                      ↓
-                                                    Thread sender → UDP → Unity
+                                                   Sender thread → UDP → Unity
 ```
 
-- Cada worker lee de su propia cola. Si un worker se atrasa, las muestras extras se descartan (`put_nowait`) — no bloquea la adquisición.
-- El sender duerme 250 ms entre envíos independientemente de cuándo actualicen los workers. Unity siempre recibe el valor más reciente disponible.
-- La IMU (accel + gyro) se actualiza en el thread de adquisición directamente — sin pasar por colas, cada muestra sobrescribe el valor anterior.
+- Each worker reads from its own queue. If a worker falls behind, excess samples are dropped (`put_nowait`) — acquisition is never blocked.
+- The sender sleeps 250 ms between sends regardless of when workers update. Unity always receives the latest available value.
+- IMU (accel + gyro) is updated directly in the acquisition thread — bypasses queues, each sample overwrites the previous value.
 
 ---
 
-## Archivos
+## Files
 
 ```
 signal-processing/
-├── stream.py                    ← ENTRADA PRINCIPAL — corre ambos pipelines
-├── manual-filtering/            ← Pipeline DSP clásico
+├── stream.py                    ← MAIN ENTRY POINT — runs both pipelines
+├── manual-filtering/            ← Classical DSP pipeline
 │   ├── filters.py               CAR + notch + bandpass
-│   ├── artifacts.py             ICA con MNE (offline)
+│   ├── artifacts.py             ICA with MNE (offline only)
 │   ├── features.py              Bandpower + AdaptiveClassifier
-│   ├── pipeline.py              Orquestador + calibración
+│   ├── pipeline.py              Orchestrator + calibration
 │   └── realtime.py              RealtimeProcessor + stream_to_unity()
-└── model-finetuning/            ← Pipeline EEGNet
-    ├── calibrate_api.py         Sesión de grabación — API propietaria g.tec
-    ├── calibrate_generic.py     Sesión de grabación — SDK estándar UnicornPy
-    ├── dataset.py               EEGDataset con augmentation
+└── model-finetuning/            ← EEGNet pipeline
+    ├── calibrate_api.py         Recording session — proprietary g.tec API
+    ├── calibrate_generic.py     Recording session — standard UnicornPy SDK
+    ├── dataset.py               EEGDataset with augmentation
     ├── model.py                 build_model(), from_pretrained_hub(), freeze_backbone()
-    ├── train.py                 Fine-tuning en dos fases
-    └── predict.py               EEGClassifier + stream() standalone
+    ├── train.py                 Two-phase fine-tuning
+    └── predict.py               EEGClassifier + standalone stream()
 ```
 
-Cada sub-carpeta tiene su propio `README.md` con instrucciones detalladas.
+Each subfolder has its own `README.md` with detailed instructions.

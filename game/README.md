@@ -1,146 +1,146 @@
 # Game — Unity
 
-Juego de ritmo con cuatro modos controlados por señales EEG del Unicorn Black.
+Rhythm game with four modes controlled by EEG signals from the Unicorn Black.
 
 ---
 
-## Modos de juego
+## Game modes
 
-| Escena | Modo | Descripción |
-|--------|------|-------------|
-| **TamborMelodia** | Ritmo clásico | Notas caen desde arriba; hay que darles click en la zona de activación. Puntuación por precisión (Perfect / Good / Normal / Miss) y rango final S–D |
-| **Ritmo** | Reproducción de ritmo | El juego toca un patrón de 4–8 beats; el jugador debe reproducirlo a ciegas con la misma cadencia. Puntuación = % de precisión temporal |
-| **Tambor** | Batería libre | Modo libre: cada click toca un golpe de batería con pitch aleatorio |
-| **Piano** | Piano libre | Teclado de una octava (Do–Si); cada tecla reproduce su nota |
+| Scene | Mode | Description |
+|-------|------|-------------|
+| **TamborMelodia** | Classic rhythm | Notes fall from the top; click them in the activation zone. Scored by accuracy (Perfect / Good / Normal / Miss) with a final rank S–D |
+| **Ritmo** | Rhythm reproduction | The game plays a 4–8 beat pattern; the player must reproduce it silently with the same timing. Score = % temporal accuracy |
+| **Tambor** | Free drums | Free-play mode: each click plays a drum hit with randomized pitch |
+| **Piano** | Free piano | One-octave keyboard (C–B); each key plays its note |
 
-Desde **Menu** se navega a los tres modos principales (Batería → TamborMelodia, Piano, Ritmo).
+From **Menu** you navigate to the three main modes (Drums → TamborMelodia, Piano, Ritmo).
 
 ---
 
-## Integración EEG
+## EEG integration
 
-### `EEGReceiver.cs` — recepción de datos
+### `EEGReceiver.cs` — data reception
 
-Escucha el paquete UDP de `stream.py` en el puerto **5005** en un thread de fondo. Expone todos los valores como campos públicos, actualizados en `Update()` (thread-safe).
+Listens to the UDP packet from `stream.py` on port **5005** on a background thread. Exposes all values as public fields, updated in `Update()` (thread-safe).
 
-### `EEGMouseClicker.cs` — trigger de parpadeo
+### `EEGMouseClicker.cs` — blink trigger
 
-Detecta un parpadeo deliberado cuando `focus >= 0.95` y lanza un `UnityEvent` configurable desde el Inspector. Dispara una sola vez por transición (no se repite mientras focus esté alto).
+Detects a deliberate blink when `focus >= 0.95` and fires a configurable `UnityEvent` from the Inspector. Fires once per transition (does not repeat while focus stays high).
 
 ```
-EEGReceiver.focus >= 0.95  →  EEGMouseClicker  →  UnityEvent (acción configurada en Inspector)
+EEGReceiver.focus >= 0.95  →  EEGMouseClicker  →  UnityEvent (action configured in Inspector)
 ```
 
-Uso típico: confirmar selección en menú, activar habilidad especial, disparar acción puntual.
+Typical use: confirm menu selection, activate a special ability, trigger a one-shot action.
 
-### `EEGReceiverMock.cs` — pruebas sin hardware
+### `EEGReceiverMock.cs` — testing without hardware
 
-Simula `focus = 1.0` mientras se mantiene presionado el botón del mouse, y `focus = 0.0` en caso contrario. Permite probar la lógica de blink sin conectar el Unicorn.
-
----
-
-## Valores disponibles en `EEGReceiver`
-
-**EEG — actualizados cada ~250 ms**
-
-| Campo | Rango | Fuente | Uso actual |
-|-------|-------|--------|------------|
-| `focus` | 0–1 | EEGNet | Probabilidad de parpadeo; saturado a 1.0 cuando > 0.7 — trigger via `EEGMouseClicker` (umbral 0.95) |
-| `engagement` | 0–1 | DSP (β/α+β) | Disponible; no conectado a mecánica activa actualmente |
-| `alpha` | 0–1 | DSP (normalizado) | Disponible |
-| `beta` | 0–1 | DSP (normalizado) | Disponible |
-| `theta` | 0–1 | DSP (normalizado) | Disponible |
-
-**IMU — pass-through sin filtro**
-
-| Campo | Unidad | En reposo | Uso actual |
-|-------|--------|-----------|------------|
-| `accelX` / `accelY` | mg | ≈ 0 | Disponible; no conectado a mecánica activa actualmente |
-| `accelZ` | mg | ≈ 1000 (1g) | Disponible |
-| `gyroX` / `gyroY` / `gyroZ` | °/s | ≈ 0 | Usado por `control/gyro_mouse.py` (fuera de Unity) |
+Simulates `focus = 1.0` while the mouse button is held and `focus = 0.0` otherwise. Allows testing blink detection logic without connecting the Unicorn.
 
 ---
 
-## Crear el proyecto Unity
+## Available values in `EEGReceiver`
 
-1. Abrir Unity Hub → **Open** → seleccionar la carpeta `game/` de este repo
-2. Si es un proyecto nuevo: **New Project** → template 2D → apuntar Location a `game/`
-3. Unity creará `ProjectSettings/`, `Packages/`, `Library/`, etc. dentro de `game/`
-4. Los scripts en `Assets/Scripts/` ya estarán disponibles al abrir el proyecto
+**EEG — updated every ~250 ms**
+
+| Field | Range | Source | Current use |
+|-------|-------|--------|-------------|
+| `focus` | 0–1 | EEGNet | Blink probability; saturated to 1.0 when > 0.7 — trigger via `EEGMouseClicker` (threshold 0.95) |
+| `engagement` | 0–1 | DSP (β/α+β) | Available; not connected to active mechanics |
+| `alpha` | 0–1 | DSP (normalized) | Available |
+| `beta` | 0–1 | DSP (normalized) | Available |
+| `theta` | 0–1 | DSP (normalized) | Available |
+
+**IMU — unfiltered pass-through**
+
+| Field | Unit | At rest | Current use |
+|-------|------|---------|-------------|
+| `accelX` / `accelY` | mg | ≈ 0 | Available; not connected to active mechanics |
+| `accelZ` | mg | ≈ 1000 (1g) | Available |
+| `gyroX` / `gyroY` / `gyroZ` | °/s | ≈ 0 | Used by `control/gyro_mouse.py` (outside Unity) |
 
 ---
 
-## Setup EEG en escena
+## Create the Unity project
 
-1. Crear un **GameObject vacío** → renombrarlo `EEGReceiver`
-2. Añadirle el componente `EEGReceiver.cs`
-3. Para usar blink detection: añadir `EEGMouseClicker.cs` al mismo u otro GameObject, asignar la referencia a `EEGReceiver` y conectar el `UnityEvent` en el Inspector
-4. Para desarrollo sin hardware: usar `EEGReceiverMock.cs` en lugar de `EEGReceiver.cs`
+1. Open Unity Hub → **Open** → select the `game/` folder from this repo
+2. For a new project: **New Project** → 2D template → set Location to `game/`
+3. Unity will create `ProjectSettings/`, `Packages/`, `Library/`, etc. inside `game/`
+4. Scripts in `Assets/Scripts/` will be available as soon as the project opens
 
 ---
 
-## Correr
+## EEG scene setup
 
-1. Arrancar el streamer Python en otra terminal:
+1. Create an empty **GameObject** → rename it `EEGReceiver`
+2. Add `EEGReceiver.cs` as a component
+3. For blink detection: add `EEGMouseClicker.cs` to the same or another GameObject, assign the `EEGReceiver` reference, and wire the `UnityEvent` in the Inspector
+4. For development without hardware: use `EEGReceiverMock.cs` instead of `EEGReceiver.cs`
+
+---
+
+## Running
+
+1. Start the Python streamer in another terminal:
    ```bash
    cd signal-processing
    python stream.py --model model-finetuning/models/calibrated.pt [--mock]
    ```
-2. Dar **Play** en Unity
+2. Press **Play** in Unity
 
 ---
 
-## Grabaciones
+## Recordings
 
-`Grabadora` es un **Singleton** con `DontDestroyOnLoad` — se instancia una vez y persiste entre escenas. Graba el audio del `AudioSource` principal y al parar guarda el archivo en `game/Grabaciones/` con nombre basado en fecha y hora: `Grabacion_yyyy-MM-dd_HH-mm-ss.wav`.
+`Grabadora` is a **Singleton** with `DontDestroyOnLoad` — instantiated once and persists across scenes. It records audio from the main `AudioSource` and on stop saves the file to `game/Grabaciones/` with a date-based name: `Grabacion_yyyy-MM-dd_HH-mm-ss.wav`.
 
-`ControladorGrabacionUI` expone dos métodos para conectar a botones en el Inspector:
-- `BotonEmpezar()` — inicia la grabación
-- `BotonParar()` — detiene y guarda el archivo WAV
+`ControladorGrabacionUI` exposes two methods to wire to buttons in the Inspector:
+- `BotonEmpezar()` — starts recording
+- `BotonParar()` — stops and saves the WAV file
 
-La escena **Grabaciones** lista los `.wav` de `game/Grabaciones/` y permite reproducirlos desde la UI.
+The **Grabaciones** scene lists `.wav` files from `game/Grabaciones/` and allows playback from the UI.
 
-> **Nota:** `Grabaciones.unity` y las escenas de `TamborMelodia/` no están registradas en `EditorBuildSettings.asset`. Solo Menu, Piano, Ritmo y Tambor están habilitadas para build. Para incluirlas en un build, abrirlas y usar **File → Build Settings → Add Open Scenes**.
+> **Note:** `Grabaciones.unity` and the `TamborMelodia/` scenes are not registered in `EditorBuildSettings.asset`. Only Menu, Piano, Ritmo, and Tambor are enabled for build. To include them in a build, open them and use **File → Build Settings → Add Open Scenes**.
 
 ---
 
-## Estructura de scripts
+## Script structure
 
 ```
 Assets/Scripts/
 ├── Data_Receiver/
-│   ├── EEGReceiver.cs          recibe paquete UDP de stream.py
-│   ├── EEGMouseClicker.cs      dispara UnityEvent al detectar blink (focus >= 0.95)
-│   └── EEGReceiverMock.cs      mock para desarrollo sin hardware
+│   ├── EEGReceiver.cs              receives UDP packet from stream.py
+│   ├── EEGMouseClicker.cs          fires UnityEvent on blink detection (focus >= 0.95)
+│   └── EEGReceiverMock.cs          mock for development without hardware
 ├── Menu_Principal/
-│   ├── MenuSystem.cs           carga escena de juego / salir
-│   └── SeleccionarInstrumento.cs genera botones de selección de nivel
+│   ├── MenuSystem.cs               loads game scene / quits
+│   └── SeleccionarInstrumento.cs   generates level selection buttons
 ├── Menu/
-│   └── MenuManager.cs          navegación entre escenas (Batería / Piano / Ritmo / Menú)
+│   └── MenuManager.cs              scene navigation (Drums / Piano / Ritmo / Menu)
 ├── TamborMelodia/
-│   ├── GameManager.cs          scoring, rango final, flujo de partida
-│   ├── Beatscroller.cs         scrollea notas a velocidad en BPM
-│   ├── NodeObject.cs           tile individual — zonas Perfect / Good / Normal / Miss
-│   ├── ButtonController.cs     feedback visual de botones
-│   └── EffectObject.cs         efectos visuales temporales de acierto/fallo
+│   ├── GameManager.cs              scoring, final rank, game flow
+│   ├── Beatscroller.cs             scrolls notes at BPM speed
+│   ├── NodeObject.cs               individual tile — Perfect / Good / Normal / Miss zones
+│   ├── ButtonController.cs         button visual feedback
+│   └── EffectObject.cs             temporary hit/miss visual effects
 ├── Ritmo/
-│   └── JuegoRitmoUnificado.cs  aprendizaje + reproducción de ritmo, scoring por %
+│   └── JuegoRitmoUnificado.cs      learn + reproduce rhythm, scoring by %
 ├── Piano/
-│   └── MusicNotes.cs           reproduce notas (Do–Si) via AudioSource
+│   └── MusicNotes.cs               plays notes (C–B) via AudioSource
 ├── Tambor/
-│   └── TamborLibre.cs          batería libre con pitch aleatorio; ignora clicks sobre UI
+│   └── TamborLibre.cs              free drums with random pitch; ignores clicks on UI
 └── Grabaciones/
-    ├── Grabadora.cs            Singleton — graba audio a WAV en game/Grabaciones/ con nombre por fecha
-    ├── ControladorGrabacionUI.cs UI bridge: BotonEmpezar() / BotonParar() → Grabadora.instancia
-    ├── SavWav.cs               utilidad de escritura de archivos WAV (PCM 16-bit)
-    ├── ListaAudiosManager.cs   lista y reproduce .wav de la carpeta Grabaciones/
-    └── FilaAudio.cs            fila de UI por cada archivo de grabación
+    ├── Grabadora.cs                Singleton — records audio to WAV in game/Grabaciones/ with date-based name
+    ├── ControladorGrabacionUI.cs   UI bridge: BotonEmpezar() / BotonParar() → Grabadora.instancia
+    ├── SavWav.cs                   WAV file writer utility (16-bit PCM)
+    ├── ListaAudiosManager.cs       lists and plays .wav files from the Grabaciones/ folder
+    └── FilaAudio.cs                UI row for each recording file
 ```
 
 ---
 
-## Notas de Unity
+## Unity notes
 
-- Versión recomendada: **Unity 2022 LTS** o posterior
-- Carpetas generadas automáticamente (`Library/`, `Temp/`, `Obj/`, `Builds/`) están en `.gitignore`
-- No subir `Library/` al repositorio — se regenera al abrir el proyecto
+- Unity version used: **Unity 6.3**
+- Auto-generated folders (`Library/`, `Temp/`, `Obj/`, `Builds/`) are in `.gitignore`
+- Do not commit `Library/` — it is regenerated when the project is opened
