@@ -19,6 +19,8 @@ From **Menu** you navigate to the three main modes (Drums → TamborMelodia, Pia
 
 ## EEG integration
 
+> **Status:** `EEGReceiver.cs`, `EEGMouseClicker.cs`, and `EEGReceiverMock.cs` are currently commented out in the codebase. The EEG-to-Unity input layer is implemented but disabled — re-enable by uncommenting the class bodies and wiring them as described below.
+
 ### `EEGReceiver.cs` — data reception
 
 Listens to the UDP packet from `stream.py` on port **5005** on a background thread. Exposes all values as public fields, updated in `Update()` (thread-safe).
@@ -73,9 +75,9 @@ Simulates `focus = 1.0` while the mouse button is held and `focus = 0.0` otherwi
 ## EEG scene setup
 
 1. Create an empty **GameObject** → rename it `EEGReceiver`
-2. Add `EEGReceiver.cs` as a component
-3. For blink detection: add `EEGMouseClicker.cs` to the same or another GameObject, assign the `EEGReceiver` reference, and wire the `UnityEvent` in the Inspector
-4. For development without hardware: use `EEGReceiverMock.cs` instead of `EEGReceiver.cs`
+2. Uncomment the class body in `EEGReceiver.cs` and add it as a component
+3. For blink detection: uncomment `EEGMouseClicker.cs`, add it to a GameObject, assign the `EEGReceiver` reference, and wire the `UnityEvent` in the Inspector
+4. For development without hardware: uncomment `EEGReceiverMock.cs` and use it instead of `EEGReceiver.cs`
 
 ---
 
@@ -100,7 +102,7 @@ Simulates `focus = 1.0` while the mouse button is held and `focus = 0.0` otherwi
 
 The **Grabaciones** scene lists `.wav` files from `game/Grabaciones/` and allows playback from the UI.
 
-> **Note:** `Grabaciones.unity` and the `TamborMelodia/` scenes are not registered in `EditorBuildSettings.asset`. Only Menu, Piano, Ritmo, and Tambor are enabled for build. To include them in a build, open them and use **File → Build Settings → Add Open Scenes**.
+Scenes registered in `EditorBuildSettings.asset`: Menu, Piano, Ritmo, Tambor, and Grabaciones. `TamborMelodia/` is not registered — to include it in a build, open it and use **File → Build Settings → Add Open Scenes**.
 
 ---
 
@@ -109,14 +111,15 @@ The **Grabaciones** scene lists `.wav` files from `game/Grabaciones/` and allows
 ```
 Assets/Scripts/
 ├── Data_Receiver/
-│   ├── EEGReceiver.cs              receives UDP packet from stream.py
-│   ├── EEGMouseClicker.cs          fires UnityEvent on blink detection (focus >= 0.95)
-│   └── EEGReceiverMock.cs          mock for development without hardware
+│   ├── EEGReceiver.cs              receives UDP packet from stream.py  [currently commented out]
+│   ├── EEGMouseClicker.cs          fires UnityEvent on blink detection (focus >= 0.95)  [currently commented out]
+│   └── EEGReceiverMock.cs          mock for development without hardware  [currently commented out]
+├── AdministradorEscenas.cs         generic scene loader: IrAEscena(string nombreEscena)
 ├── Menu_Principal/
 │   ├── MenuSystem.cs               loads game scene / quits
 │   └── SeleccionarInstrumento.cs   generates level selection buttons
 ├── Menu/
-│   └── MenuManager.cs              scene navigation (Drums / Piano / Ritmo / Menu)
+│   └── MenuManager.cs              scene navigation (Drums / Piano / Ritmo / Menu / Grabaciones)
 ├── TamborMelodia/
 │   ├── GameManager.cs              scoring, final rank, game flow
 │   ├── Beatscroller.cs             scrolls notes at BPM speed
